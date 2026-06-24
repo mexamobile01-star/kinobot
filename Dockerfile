@@ -13,21 +13,22 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
-# ===== Production image =====
+# ===== Production =====
 FROM node:20-slim AS runner
 WORKDIR /app
 
-ENV NODE_ENV=production
-
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
+ENV NODE_ENV=production
 
 COPY package*.json ./
 RUN npm ci --omit=dev
 
 COPY prisma ./prisma
+COPY start.sh ./start.sh
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/dist ./dist
 
-EXPOSE 8080
+RUN chmod +x start.sh
 
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node dist/index.js"]
+CMD ["sh", "start.sh"]
