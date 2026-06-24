@@ -1,0 +1,121 @@
+// Prisma schema — Kino bot
+// DB: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===================== FOYDALANUVCHILAR =====================
+model User {
+  id        BigInt   @id // Telegram user id
+  firstName String?
+  username  String?
+  isBlocked Boolean  @default(false)
+  isAdmin   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+// ===================== MAJBURIY OBUNA KANALLARI =====================
+enum ChannelType {
+  PUBLIC // Ommaviy — @username bor
+  PRIVATE // Maxfiy — havola orqali
+  REQUEST // So'rovli — apply to join
+}
+
+model Channel {
+  id         Int         @id @default(autoincrement())
+  chatId     BigInt      @unique // Telegram chat id (-100...)
+  title      String
+  username   String? // @ siz, faqat PUBLIC uchun
+  inviteLink String? // PRIVATE / REQUEST uchun
+  type       ChannelType @default(PUBLIC)
+  isActive   Boolean     @default(true)
+  sortOrder  Int         @default(0)
+  createdAt  DateTime    @default(now())
+
+  @@map("channels")
+}
+
+// ===================== KINO =====================
+model Movie {
+  id          Int      @id @default(autoincrement())
+  code        Int      @unique // foydalanuvchi yozadigan kod
+  title       String
+  caption     String? // qo'shimcha tavsif
+  fileId      String // Telegram video file_id
+  baseMsgId   Int? // baza kanaldagi xabar id
+  year        Int?
+  genre       String?
+  quality     String?
+  language     String?
+  views       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([title])
+  @@map("movies")
+}
+
+// ===================== SERIAL =====================
+model Serial {
+  id        Int      @id @default(autoincrement())
+  code      Int      @unique
+  title     String
+  caption   String?
+  posterId  String? // poster rasm file_id (ixtiyoriy)
+  year      Int?
+  genre     String?
+  views     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  seasons Season[]
+
+  @@index([title])
+  @@map("serials")
+}
+
+model Season {
+  id       Int    @id @default(autoincrement())
+  serialId Int
+  number   Int // sezon raqami
+  title    String?
+
+  serial   Serial    @relation(fields: [serialId], references: [id], onDelete: Cascade)
+  episodes Episode[]
+
+  @@unique([serialId, number])
+  @@map("seasons")
+}
+
+model Episode {
+  id        Int      @id @default(autoincrement())
+  seasonId  Int
+  number    Int // qism raqami
+  title     String?
+  fileId    String // video file_id
+  baseMsgId Int?
+  createdAt DateTime @default(now())
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, number])
+  @@map("episodes")
+}
+
+// ===================== SOZLAMALAR (kalit-qiymat) =====================
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
