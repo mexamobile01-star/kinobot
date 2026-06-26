@@ -1,6 +1,8 @@
 import { Composer, InlineKeyboard } from "grammy";
 import { prisma } from "../prisma.js";
 import { ce, e } from "../utils/emoji.js";
+import { contentButtonMarkup } from "../utils/contentButton.js";
+import { getGlobalButton } from "../utils/settings.js";
 import type { MyContext } from "../types.js";
 
 export const serialViewHandler = new Composer<MyContext>();
@@ -26,12 +28,14 @@ export async function sendSerialSeasons(ctx: MyContext, serialId: number) {
     return;
   }
 
-  const kb = new InlineKeyboard();
+  const rows = [];
   for (const s of serial.seasons) {
-    kb.text(
-      `📂 ${s.number}-sezon${s.title ? ` · ${s.title}` : ""}`,
-      `season:${s.id}`
-    ).row();
+    rows.push([
+      {
+        text: `📂 ${s.number}-sezon${s.title ? ` · ${s.title}` : ""}`,
+        callback_data: `season:${s.id}`,
+      },
+    ]);
   }
 
   const caption =
@@ -40,13 +44,14 @@ export async function sendSerialSeasons(ctx: MyContext, serialId: number) {
     (serial.caption ? `\n${e.escapeHtml(serial.caption)}\n` : "") +
     `\nSezonni tanlang:`;
 
+  const globalBtn = await getGlobalButton("serial");
   if (serial.posterId) {
     await ctx.replyWithPhoto(serial.posterId, {
       caption,
-      reply_markup: kb,
+      reply_markup: contentButtonMarkup(globalBtn, rows),
     });
   } else {
-    await ctx.reply(caption, { reply_markup: kb });
+    await ctx.reply(caption, { reply_markup: contentButtonMarkup(globalBtn, rows) });
   }
 }
 

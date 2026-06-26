@@ -1,5 +1,7 @@
 import { prisma } from "../prisma.js";
 import { ce, e } from "../utils/emoji.js";
+import { contentButtonMarkup } from "../utils/contentButton.js";
+import { getGlobalButton } from "../utils/settings.js";
 import type { MyContext } from "../types.js";
 import type { Movie } from "@prisma/client";
 
@@ -17,8 +19,10 @@ export function movieCaption(m: Movie): string {
 
 /** Kinoni foydalanuvchiga yuboradi va ko'rishlar sonini oshiradi */
 export async function sendMovie(ctx: MyContext, movie: Movie) {
+  const globalBtn = await getGlobalButton("movie");
   await ctx.replyWithVideo(movie.fileId, {
     caption: movieCaption(movie),
+    reply_markup: contentButtonMarkup(globalBtn),
   });
   await prisma.movie.update({
     where: { id: movie.id },

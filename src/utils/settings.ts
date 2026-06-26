@@ -28,6 +28,32 @@ export async function setBool(key: string, value: boolean): Promise<void> {
   await setSetting(key, value ? "1" : "0");
 }
 
+export function clearSettingsCache(): void {
+  cache.clear();
+}
+
 export const KEYS = {
-  forceSubEnabled: "force_sub_enabled", // majburiy obuna yoqilgan/o'chirilgan
+  forceSubEnabled: "force_sub_enabled",
+  movieBtnText:   "movie_btn_text",
+  movieBtnUrl:    "movie_btn_url",
+  movieBtnStyle:  "movie_btn_style",
+  serialBtnText:  "serial_btn_text",
+  serialBtnUrl:   "serial_btn_url",
+  serialBtnStyle: "serial_btn_style",
 } as const;
+
+export async function getGlobalButton(prefix: "movie" | "serial") {
+  const textKey  = prefix === "movie" ? KEYS.movieBtnText  : KEYS.serialBtnText;
+  const urlKey   = prefix === "movie" ? KEYS.movieBtnUrl   : KEYS.serialBtnUrl;
+  const styleKey = prefix === "movie" ? KEYS.movieBtnStyle : KEYS.serialBtnStyle;
+  const [text, url, style] = await Promise.all([
+    getSetting(textKey),
+    getSetting(urlKey),
+    getSetting(styleKey, "primary"),
+  ]);
+  return {
+    buttonText:  text  || null,
+    buttonUrl:   url   || null,
+    buttonStyle: style || "primary",
+  };
+}
