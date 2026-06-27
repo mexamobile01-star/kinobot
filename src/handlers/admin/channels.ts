@@ -201,16 +201,7 @@ channelsHandler.callbackQuery("ch:subbtnreset", async (ctx) => {
   await renderBtnSettings(ctx);
 });
 
-// ============ SO'ROVLAR STATISTIKASI (redirect) ============
-channelsHandler.callbackQuery("ch:jrstats", async (ctx) => {
-  await ctx.answerCallbackQuery();
-  await ctx.editMessageText(
-    "📊 <b>So'rovlar statistikasi</b>\n\nYuklanyapti...",
-    { reply_markup: kb([ibtn("Orqaga", "ch:menu", undefined, BE.backMenu)]) }
-  ).catch(() => {});
-  // joinStatsHandler shu callbackni o'zi qayta ko'taradi
-  await ctx.callbackQuery?.message; // trigger for joinStats handler below
-});
+// "ch:jrstats" callback joinStats.ts handlerida ko'tariladi.
 
 // ============ QO'SHISH — TUR TANLASH ============
 channelsHandler.callbackQuery("ch:add", async (ctx) => {
@@ -463,15 +454,28 @@ channelsHandler.on("message:chat_shared", async (ctx) => {
   await processChannelInfo(ctx, { chatId, title, username, type });
 });
 
+// Telegram botni admin qilishni biroz kechiktirishi mumkin — bir necha marta urinamiz
+async function waitBotAdmin(ctx: MyContext, chatId: number, attempts = 5) {
+  for (let i = 0; i < attempts; i++) {
+    const m = await ctx.api.getChatMember(chatId, ctx.me.id).catch(() => null);
+    if (m && (m.status === "administrator" || m.status === "creator")) return m;
+    if (i < attempts - 1) await new Promise((r) => setTimeout(r, 1200));
+  }
+  return null;
+}
+
 // ============ KANAL TEKSHIRISH VA SAQLASH ============
 async function processChannelInfo(ctx: MyContext, info: PendingChannel) {
   const { chatId, title, username, type } = info;
 
-  const botMember = await ctx.api.getChatMember(chatId, ctx.me.id).catch(() => null);
-  if (!botMember || !["administrator", "creator"].includes(botMember.status)) {
+  // Telegram bot_administrator_rights orqali botni avtomatik admin qiladi,
+  // lekin bu biroz vaqt olishi mumkin — shuning uchun qayta urinamiz.
+  const botMember = await waitBotAdmin(ctx, chatId);
+  if (!botMember) {
     await ctx.reply(
-      `❌ Bot <b>${e.escapeHtml(title)}</b> kanalida admin emas.\n\n` +
-      `Avval botni admin qilib qo'shing, keyin qayta urinib ko'ring.`,
+      `❌ Bot <b>${e.escapeHtml(title)}</b> da admin bo'la olmadi.\n\n` +
+      `Iltimos, botni qo'lda <b>admin</b> qilib qo'shing (kanal/guruh sozlamalari → Adminlar → ${ctx.me.username ? "@" + ctx.me.username : "bot"}), ` +
+      `so'ng qaytadan "Qo'shish" tugmasidan foydalaning.`,
       { reply_markup: { remove_keyboard: true } }
     );
     const { text, markup } = await channelMenuData();
