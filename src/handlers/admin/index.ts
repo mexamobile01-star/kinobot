@@ -13,6 +13,7 @@ import { broadcastHandler } from "./broadcast.js";
 import { backupHandler } from "./backup.js";
 import { adminsHandler } from "./admins.js";
 import { joinStatsHandler } from "./joinStats.js";
+import { funnelHandler } from "./funnel.js";
 
 // Faqat adminlar uchun
 export const adminHandler = new Composer<MyContext>();
@@ -39,3 +40,4 @@ admin.use(broadcastHandler);
 admin.use(backupHandler);
 admin.use(adminsHandler);
 admin.use(joinStatsHandler);
+admin.use(funnelHandler);

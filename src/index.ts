@@ -143,6 +143,42 @@ main().catch((e) => {
   process.exit(1);
 });
 
+// ===== Foydalanuvchi so'rovnomaga javob berish =====
+bot.callbackQuery(/^svr:ans:(\d+):(\d+)$/, async (ctx) => {
+  const surveyId = Number(ctx.match[1]);
+  const optionId = Number(ctx.match[2]);
+  const userId   = BigInt(ctx.from.id);
+
+  const survey = await prisma.survey.findUnique({
+    where: { id: surveyId },
+    include: { options: { where: { id: optionId } } },
+  });
+  if (!survey || !survey.options.length) {
+    await ctx.answerCallbackQuery({ text: "So'rovnoma topilmadi.", show_alert: true });
+    return;
+  }
+  const option = survey.options[0];
+
+  const existing = await prisma.surveyResponse.findUnique({
+    where: { surveyId_userId: { surveyId, userId } },
+  });
+  if (existing) {
+    await ctx.answerCallbackQuery({ text: "Siz allaqachon javob bergansiz!", show_alert: true });
+    return;
+  }
+
+  await prisma.surveyResponse.create({ data: { surveyId, optionId, userId } }).catch(() => null);
+
+  if (survey.isRegionSurvey) {
+    await prisma.user.update({ where: { id: userId }, data: { region: option.text } }).catch(() => null);
+  }
+
+  await ctx.answerCallbackQuery({ text: `✅ Javobingiz qabul qilindi: ${option.text}` });
+  await ctx.editMessageText(
+    `${survey.question}\n\n✅ <b>Javobingiz:</b> ${option.text}`
+  ).catch(() => {});
+});
+
 // Graceful shutdown
 const stop = async () => {
   await prisma.$disconnect();

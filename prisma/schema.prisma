@@ -16,12 +16,66 @@ model User {
   id        BigInt   @id
   firstName String?
   username  String?
+  region    String?
   isBlocked Boolean  @default(false)
   isAdmin   Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("users")
+}
+
+// ===================== FUNNEL (SO'ROVNOMA) =====================
+model Survey {
+  id             Int      @id @default(autoincrement())
+  title          String
+  question       String
+  isRegionSurvey Boolean  @default(false)
+  sentCount      Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  options   SurveyOption[]
+  responses SurveyResponse[]
+
+  @@map("surveys")
+}
+
+model SurveyOption {
+  id        Int    @id @default(autoincrement())
+  surveyId  Int
+  text      String
+  sortOrder Int    @default(0)
+
+  survey    Survey          @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  responses SurveyResponse[]
+
+  @@map("survey_options")
+}
+
+model SurveyResponse {
+  id       Int      @id @default(autoincrement())
+  surveyId Int
+  optionId Int
+  userId   BigInt
+  date     DateTime @default(now())
+
+  survey Survey       @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  option SurveyOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, userId])
+  @@map("survey_responses")
+}
+
+// ===================== BROADCAST TARIXI =====================
+model Broadcast {
+  id          Int      @id @default(autoincrement())
+  targetType  String   @default("all")
+  targetExtra String?
+  sentCount   Int      @default(0)
+  failCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@map("broadcasts")
 }
 
 // ===================== MAJBURIY OBUNA KANALLARI =====================
