@@ -14,8 +14,10 @@ export const channelsHandler = new Composer<MyContext>();
 const REQ_CHANNEL = 1;
 const REQ_GROUP   = 2;
 
-// Bot uchun minimal admin huquqlar — requestChat bilan auto-add qilish uchun
-const BOT_RIGHTS: ChatAdministratorRights = {
+// Minimal admin huquqlar — requestChat bilan botni avtomatik admin qilish uchun.
+// MUHIM: bot_administrator_rights user_administrator_rights ichki to'plami bo'lishi shart,
+// aks holda Telegram USER_RIGHTS_MISSING xatosini beradi.
+const MIN_RIGHTS: ChatAdministratorRights = {
   is_anonymous: false, can_manage_chat: true, can_delete_messages: false,
   can_manage_video_chats: false, can_restrict_members: false, can_promote_members: false,
   can_change_info: false, can_invite_users: true, can_post_messages: false,
@@ -214,11 +216,15 @@ channelsHandler.callbackQuery("ch:add", async (ctx) => {
     `<b>Instagram</b> — Instagram profil havolasini yuboring.`,
     {
       reply_markup: kb(
-        [ibtn("Ommaviy",   "ch:type:PUBLIC",    "primary", BE.chList)],
-        [ibtn("Maxfiy",    "ch:type:PRIVATE",   "success", BE.chAdd)],
-        [ibtn("So'rovli",  "ch:type:REQUEST",   "danger",  BE.subOn)],
-        [ibtn("📸 Instagram", "ch:type:INSTAGRAM", "primary")],
-        [ibtn("Orqaga",    "ch:menu",           undefined, BE.backMenu)],
+        [
+          ibtn("Ommaviy",   "ch:type:PUBLIC",  "primary", "5258476306152038031"),
+          ibtn("Maxfiy",    "ch:type:PRIVATE", "success", "5260268501515377807"),
+        ],
+        [
+          ibtn("So'rovli",  "ch:type:REQUEST",   "danger",  "5258205968025525531"),
+          ibtn("Instagram", "ch:type:INSTAGRAM", "primary", "5258419835922030550"),
+        ],
+        [ibtn("Orqaga", "ch:menu", undefined, BE.backMenu)],
       ),
     }
   ).catch(() => {});
@@ -245,19 +251,22 @@ channelsHandler.callbackQuery(/^ch:type:(PUBLIC|PRIVATE|REQUEST|INSTAGRAM)$/, as
   const requirePublic = type === "PUBLIC";
   const typeName = type === "PUBLIC" ? "Ommaviy" : type === "PRIVATE" ? "Maxfiy" : "So'rovli";
 
-  // bot_administrator_rights — Telegram avtomatik admin qilishni so'raydi
+  // user_administrator_rights + bot_administrator_rights — Telegram botni avtomatik
+  // admin qiladi. Ikkalasi bir xil (minimal) bo'lishi shart, aks holda USER_RIGHTS_MISSING.
   const rkb = new Keyboard()
     .requestChat("📢 Kanalni tanlash", REQ_CHANNEL, {
       chat_is_channel: true,
       chat_has_username: requirePublic ? true : undefined,
-      bot_administrator_rights: BOT_RIGHTS,
+      user_administrator_rights: MIN_RIGHTS,
+      bot_administrator_rights: MIN_RIGHTS,
       request_title: true, request_username: true,
     })
     .row()
     .requestChat("👥 Guruhni tanlash", REQ_GROUP, {
       chat_is_channel: false,
       chat_has_username: requirePublic ? true : undefined,
-      bot_administrator_rights: BOT_RIGHTS,
+      user_administrator_rights: MIN_RIGHTS,
+      bot_administrator_rights: MIN_RIGHTS,
       request_title: true, request_username: true,
     })
     .row()
