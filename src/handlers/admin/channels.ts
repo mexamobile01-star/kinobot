@@ -148,8 +148,8 @@ channelsHandler.callbackQuery("ch:btnsettings", async (ctx) => {
 });
 
 async function renderBtnSettings(ctx: MyContext, edit = true) {
-  const btnText  = await getSetting(KEYS.subCheckBtnText,  "✅ Tekshirish");
-  const btnStyle = await getSetting(KEYS.subCheckBtnStyle, "success");
+  const btnText  = await getSetting(KEYS.subCheckBtnText,  "Tekshirish");
+  const btnStyle = await getSetting(KEYS.subCheckBtnStyle, "");
 
   const text =
     `🎨 <b>Obuna knopkalari sozlamasi</b>\n\n` +
@@ -196,8 +196,8 @@ channelsHandler.callbackQuery(/^ch:subbtnsty:(primary|success|danger|random)$/, 
 
 channelsHandler.callbackQuery("ch:subbtnreset", async (ctx) => {
   await Promise.all([
-    setSetting(KEYS.subCheckBtnText,  "✅ Tekshirish"),
-    setSetting(KEYS.subCheckBtnStyle, "success"),
+    setSetting(KEYS.subCheckBtnText,  "Tekshirish"),
+    setSetting(KEYS.subCheckBtnStyle, ""),
   ]);
   await ctx.answerCallbackQuery({ text: "Standartga qaytarildi." });
   await renderBtnSettings(ctx);

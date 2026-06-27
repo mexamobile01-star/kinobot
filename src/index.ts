@@ -105,7 +105,7 @@ async function main() {
   }
 
   // Bot nomini o'rnatish
-  await bot.api.setMyName("Kino vaqti").catch(() => {});
+  await bot.api.setMyName("🎬 Kino vaqti").catch(() => {});
   await bot.api.setMyDescription(
     "🎬 Kino va seriallarni kod orqali toping. Inline rejimda ham ishlaydi."
   ).catch(() => {});

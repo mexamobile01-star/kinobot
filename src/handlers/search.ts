@@ -14,7 +14,7 @@ export const searchHandler = new Composer<MyContext>();
 const PANEL_TEXTS = new Set([
   ...Object.values(ADMIN_MENU_BUTTONS),
   "🔄 Yangilash",
-  "🔎 Kino qidirish",
+  "Kino qidirish",
   "❌ Bekor qilish",
 ]);
 

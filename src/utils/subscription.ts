@@ -59,8 +59,7 @@ export async function sendSubscriptionPrompt(
   ctx: MyContext,
   channels: Channel[]
 ): Promise<void> {
-  const checkText  = await getSetting(KEYS.subCheckBtnText,    "✅ Tekshirish");
-  const checkStyle = await getSetting(KEYS.subCheckBtnStyle,   "success");
+  const checkText  = await getSetting(KEYS.subCheckBtnText,    "Tekshirish");
   const defLabel   = await getSetting(KEYS.subChannelBtnLabel, "+ Kanalga obuna bo'lish");
 
   const kb = new InlineKeyboard();
@@ -78,7 +77,6 @@ export async function sendSubscriptionPrompt(
     (kb as any).inline_keyboard.push([{
       text: checkText,
       callback_data: "sub:check",
-      style: checkStyle,
       icon_custom_emoji_id: "5861665979968262792",
     }]);
   }

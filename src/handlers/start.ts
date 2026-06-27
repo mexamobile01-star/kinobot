@@ -52,7 +52,7 @@ startHandler.callbackQuery("sub:check", async (ctx) => {
   }
 });
 
-startHandler.hears("🔎 Kino qidirish", async (ctx) => {
+startHandler.hears("Kino qidirish", async (ctx) => {
   await ctx.reply(
     `<tg-emoji emoji-id="5429571366384842791">🔎</tg-emoji> Kino <b>kodi</b> yoki <b>nomini</b> yuboring.`
   );
