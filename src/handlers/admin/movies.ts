@@ -5,7 +5,7 @@ import { config, isOwner } from "../../config.js";
 import { ce, e } from "../../utils/emoji.js";
 import { ADMIN_MENU_BUTTONS, ibtn, BE, kb, cancelKeyboard, adminMenuKeyboard } from "../../utils/keyboard.js";
 import { isValidUrl, resolveButtonStyle } from "../../utils/contentButton.js";
-import { getSetting, setSetting, getGlobalButton, KEYS } from "../../utils/settings.js";
+import { getSetting, setSetting, getGlobalButton, getBool, setBool, KEYS } from "../../utils/settings.js";
 import type { MyContext } from "../../types.js";
 
 export const moviesHandler = new Composer<MyContext>();
@@ -59,7 +59,8 @@ export async function addMovie(conversation: Conversation<MyContext>, ctx: MyCon
   const video = vidCtx.message?.video;
   if (!video)
     return vidCtx.reply("❌ Bu video emas.", { reply_markup: adminMenuKeyboard(owner) });
-  const fileId = video.file_id;
+  const fileId   = video.file_id;
+  const duration = video.duration ?? null;
 
   await vidCtx.reply("2️⃣ Kino <b>kodini</b> kiriting (raqam). Masalan: <code>123</code>");
   let code = 0;
@@ -101,7 +102,7 @@ export async function addMovie(conversation: Conversation<MyContext>, ctx: MyCon
 
   const movie = await conversation.external(() =>
     prisma.movie.create({
-      data: { code, title, caption: cap === "-" ? null : cap, fileId, baseMsgId },
+      data: { code, title, caption: cap === "-" ? null : cap, fileId, baseMsgId, duration },
     })
   );
 
@@ -182,16 +183,25 @@ moviesHandler.callbackQuery(/^mv:btnlist:\d+$/, async (ctx) => {
 });
 
 async function renderGlobalMovieButtonEditor(ctx: MyContext, edit = true) {
-  const btn = await getGlobalButton("movie");
-  const status = btn.buttonUrl
+  const btn     = await getGlobalButton("movie");
+  const enabled = await getBool(KEYS.movieBtnEnabled, true);
+  const status  = btn.buttonUrl
     ? `Nom: <b>${e.escapeHtml(btn.buttonText ?? "Ko'rish")}</b>\nHavola: ${e.escapeHtml(btn.buttonUrl)}\nRang: <b>${btn.buttonStyle}</b>`
     : "Knopka hali sozlanmagan.";
 
   const text =
     `<tg-emoji emoji-id="${BE.movie}">🎬</tg-emoji> <b>Kino uchun global knopka</b>\n\n` +
+    `Holat: <b>${enabled ? "Yoqilgan" : "O'chirilgan"}</b>\n` +
     `${status}\n\n<i>Bu knopka barcha kinolarda ko'rinadi.</i>`;
 
   const reply_markup = kb(
+    [
+      ibtn(
+        enabled ? "🟢 Yoqilgan — O'chirish" : "🔴 O'chirilgan — Yoqish",
+        "mv:gbtntoggle",
+        enabled ? "success" : "danger"
+      ),
+    ],
     [
       ibtn("Nomni o'zgartirish",    "mv:gbtntext",   "primary", BE.editName),
       ibtn("Havolani o'zgartirish", "mv:gbtnurl",    "primary", BE.editUrl),
@@ -226,6 +236,13 @@ moviesHandler.callbackQuery("mv:gbtncolors", async (ctx) => {
       ),
     }
   ).catch(() => {});
+});
+
+moviesHandler.callbackQuery("mv:gbtntoggle", async (ctx) => {
+  const cur = await getBool(KEYS.movieBtnEnabled, true);
+  await setBool(KEYS.movieBtnEnabled, !cur);
+  await ctx.answerCallbackQuery({ text: !cur ? "✅ Knopka yoqildi" : "❌ Knopka o'chirildi", show_alert: true });
+  await renderGlobalMovieButtonEditor(ctx);
 });
 
 moviesHandler.callbackQuery("mv:gbtntext", async (ctx) => {

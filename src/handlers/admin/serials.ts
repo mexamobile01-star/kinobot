@@ -5,7 +5,7 @@ import { config, isOwner } from "../../config.js";
 import { ce, e } from "../../utils/emoji.js";
 import { ADMIN_MENU_BUTTONS, ibtn, BE, kb, cancelKeyboard, adminMenuKeyboard } from "../../utils/keyboard.js";
 import { isValidUrl, resolveButtonStyle } from "../../utils/contentButton.js";
-import { getSetting, setSetting, getGlobalButton, KEYS } from "../../utils/settings.js";
+import { getSetting, setSetting, getGlobalButton, getBool, setBool, KEYS } from "../../utils/settings.js";
 import type { MyContext } from "../../types.js";
 
 export const serialsHandler = new Composer<MyContext>();
@@ -269,16 +269,25 @@ serialsHandler.callbackQuery(/^sr:btnlist:\d+$/, async (ctx) => {
 });
 
 async function renderGlobalSerialButtonEditor(ctx: MyContext, edit = true) {
-  const btn = await getGlobalButton("serial");
-  const status = btn.buttonUrl
+  const btn     = await getGlobalButton("serial");
+  const enabled = await getBool(KEYS.serialBtnEnabled, true);
+  const status  = btn.buttonUrl
     ? `Nom: <b>${e.escapeHtml(btn.buttonText ?? "Ko'rish")}</b>\nHavola: ${e.escapeHtml(btn.buttonUrl)}\nRang: <b>${btn.buttonStyle}</b>`
     : "Knopka hali sozlanmagan.";
 
   const text =
     `<tg-emoji emoji-id="${BE.serial}">📺</tg-emoji> <b>Serial uchun global knopka</b>\n\n` +
+    `Holat: <b>${enabled ? "Yoqilgan" : "O'chirilgan"}</b>\n` +
     `${status}\n\n<i>Bu knopka barcha seriallarda ko'rinadi.</i>`;
 
   const reply_markup = kb(
+    [
+      ibtn(
+        enabled ? "🟢 Yoqilgan — O'chirish" : "🔴 O'chirilgan — Yoqish",
+        "sr:gbtntoggle",
+        enabled ? "success" : "danger"
+      ),
+    ],
     [
       ibtn("Nomni o'zgartirish",    "sr:gbtntext",   "primary", BE.editName),
       ibtn("Havolani o'zgartirish", "sr:gbtnurl",    "primary", BE.editUrl),
@@ -313,6 +322,13 @@ serialsHandler.callbackQuery("sr:gbtncolors", async (ctx) => {
       ),
     }
   ).catch(() => {});
+});
+
+serialsHandler.callbackQuery("sr:gbtntoggle", async (ctx) => {
+  const cur = await getBool(KEYS.serialBtnEnabled, true);
+  await setBool(KEYS.serialBtnEnabled, !cur);
+  await ctx.answerCallbackQuery({ text: !cur ? "✅ Knopka yoqildi" : "❌ Knopka o'chirildi", show_alert: true });
+  await renderGlobalSerialButtonEditor(ctx);
 });
 
 serialsHandler.callbackQuery("sr:gbtntext", async (ctx) => {

@@ -1,7 +1,6 @@
 import { Composer, InputFile } from "grammy";
 import { prisma } from "../../prisma.js";
 import { config } from "../../config.js";
-import { ce } from "../../utils/emoji.js";
 import { ADMIN_MENU_BUTTONS, ibtn, BE, kb } from "../../utils/keyboard.js";
 import { clearSettingsCache } from "../../utils/settings.js";
 import type { MyContext } from "../../types.js";
@@ -13,20 +12,25 @@ export const backupHandler = new Composer<MyContext>();
 const bigintReplacer = (_key: string, value: unknown) =>
   typeof value === "bigint" ? value.toString() : value;
 
-function backupMenu() {
+function backupMenuWithBack() {
   return kb(
-    [ibtn("📥 Backup olish",       "backup:get",     "primary", BE.backup)],
-    [ibtn("📤 Backupdan tiklash",  "backup:restore", "success", BE.folder)],
+    [ibtn("📥 Backup olish",      "backup:get",     "primary", BE.backup)],
+    [ibtn("📤 Backupdan tiklash", "backup:restore", "success", BE.folder)],
+    [ibtn("Menyuga qaytish",      "backup:close",   undefined, BE.backMenu)],
   );
 }
 
 // ============ MENYU ============
 backupHandler.hears(ADMIN_MENU_BUTTONS.backup, async (ctx) => {
   await ctx.reply(
-    `<tg-emoji emoji-id="${BE.backup}">💾</tg-emoji> <b>Backup</b>\n\n` +
-    `Barcha ma'lumotlarni JSON faylga eksport qilish yoki avvalgi backupdan tiklash.`,
-    { reply_markup: backupMenu() }
+    `<b>Backup</b>\n\nBarcha ma'lumotlarni eksport qilish yoki tiklash.`,
+    { reply_markup: backupMenuWithBack() }
   );
+});
+
+backupHandler.callbackQuery("backup:close", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await ctx.deleteMessage().catch(() => {});
 });
 
 // ============ BACKUP OLISH ============
@@ -65,12 +69,12 @@ backupHandler.callbackQuery("backup:get", async (ctx) => {
     new InputFile(Buffer.from(json, "utf-8"), fileName),
     {
       caption:
-        `${ce("check")} <b>Backup tayyor</b>\n\n` +
-        `🎬 Kinolar: <b>${movies.length}</b>\n` +
-        `📺 Seriallar: <b>${serials.length}</b> (<b>${episodes.length}</b> qism)\n` +
-        `📢 Kanallar: <b>${channels.length}</b>\n` +
-        `👥 Foydalanuvchilar: <b>${users.length}</b>`,
-      reply_markup: backupMenu(),
+        `<b>Backup tayyor</b>\n\n` +
+        `Kinolar: <b>${movies.length}</b>\n` +
+        `Seriallar: <b>${serials.length}</b> (${episodes.length} qism)\n` +
+        `Kanallar: <b>${channels.length}</b>\n` +
+        `Foydalanuvchilar: <b>${users.length}</b>`,
+      reply_markup: backupMenuWithBack(),
     }
   );
 });
@@ -163,17 +167,17 @@ backupHandler.callbackQuery("backup:confirm", async (ctx) => {
     clearSettingsCache();
 
     await ctx.editMessageText(
-      `${ce("check")} <b>Tiklash yakunlandi!</b>\n\n` +
+      `<b>Tiklash yakunlandi!</b>\n\n` +
       `🎬 Kinolar: <b>${result.movies}</b>\n` +
       `📺 Seriallar: <b>${result.serials}</b> (<b>${result.episodes}</b> qism)\n` +
       `📢 Kanallar: <b>${result.channels}</b>\n` +
       `👥 Foydalanuvchilar: <b>${result.users}</b>`,
-      { reply_markup: backupMenu() }
+      { reply_markup: backupMenuWithBack() }
     ).catch(() => {});
   } catch (err) {
     await ctx.editMessageText(
       `❌ Tiklashda xato: <code>${(err as Error).message}</code>`,
-      { reply_markup: backupMenu() }
+      { reply_markup: backupMenuWithBack() }
     ).catch(() => {});
   }
 });
@@ -184,7 +188,7 @@ backupHandler.callbackQuery("backup:cancel", async (ctx) => {
   await ctx.answerCallbackQuery({ text: "Bekor qilindi." });
   await ctx.editMessageText(
     `<tg-emoji emoji-id="${BE.backup}">💾</tg-emoji> <b>Backup</b>\n\nBekor qilindi.`,
-    { reply_markup: backupMenu() }
+    { reply_markup: backupMenuWithBack() }
   ).catch(() => {});
 });
 

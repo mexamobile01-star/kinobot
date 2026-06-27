@@ -59,38 +59,34 @@ export async function sendSubscriptionPrompt(
   ctx: MyContext,
   channels: Channel[]
 ): Promise<void> {
-  const btnText  = await getSetting(KEYS.subCheckBtnText,  "✅ Tekshirish");
-  const btnStyle = await getSetting(KEYS.subCheckBtnStyle, "success");
+  const checkText  = await getSetting(KEYS.subCheckBtnText,    "✅ Tekshirish");
+  const checkStyle = await getSetting(KEYS.subCheckBtnStyle,   "success");
+  const defLabel   = await getSetting(KEYS.subChannelBtnLabel, "+ Kanalga obuna bo'lish");
 
   const kb = new InlineKeyboard();
   for (const ch of channels) {
     const url = channelUrl(ch);
-    if (url) {
-      const label = ch.buttonLabel?.trim() || (ch.type === "INSTAGRAM" ? `📸 ${ch.title}` : `📢 ${ch.title}`);
-      kb.url(label, url).row();
-    }
+    if (!url) continue;
+    const label = ch.buttonLabel?.trim() ||
+      (ch.type === "INSTAGRAM" ? `📸 ${ch.title}` : defLabel);
+    kb.url(label, url).row();
   }
 
-  // "Tekshirish" knopkasi faqat Telegram kanallar uchun (Instagram emas)
-  const hasTgChannels = channels.some((c) => c.type !== "INSTAGRAM");
-  if (hasTgChannels) {
+  const hasTg = channels.some((c) => c.type !== "INSTAGRAM");
+  if (hasTg) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (kb as any).inline_keyboard.push([{
-      text: btnText,
+      text: checkText,
       callback_data: "sub:check",
-      style: btnStyle,
+      style: checkStyle,
+      icon_custom_emoji_id: "5861665979968262792",
     }]);
   }
 
-  const igCount = channels.filter((c) => c.type === "INSTAGRAM").length;
-  const tgCount = channels.filter((c) => c.type !== "INSTAGRAM").length;
-
-  let text = `${ce("fire")} <b>Botdan foydalanish uchun</b> quyidagi kanal(lar)ga a'zo bo'ling:\n\n`;
-  if (tgCount > 0) text += `📢 Telegram: <b>${tgCount}</b> ta kanal\n`;
-  if (igCount > 0) text += `📸 Instagram: <b>${igCount}</b> ta profil\n`;
-  text += `\nA'zo bo'lgach <b>${btnText}</b> tugmasini bosing.`;
-
-  await ctx.reply(text, { reply_markup: kb });
+  await ctx.reply(
+    `<b>Botdan foydalanish uchun obuna bo'ling:</b>`,
+    { reply_markup: kb }
+  );
 }
 
 export function channelUrl(ch: Channel): string | null {

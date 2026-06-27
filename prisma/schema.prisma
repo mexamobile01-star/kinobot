@@ -132,6 +132,7 @@ model Movie {
   genre       String?
   quality     String?
   language    String?
+  duration    Int?     // sekundlarda
   buttonText  String?
   buttonUrl   String?
   buttonStyle String   @default("primary")

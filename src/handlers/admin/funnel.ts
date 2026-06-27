@@ -35,18 +35,18 @@ function parseDate(s: string): Date | null {
 
 function funnelMenu() {
   return kb(
-    [ibtn("➕ So'rovnoma yaratish",  "fn:create",  "success", BE.chAdd)],
-    [ibtn("📊 Natijalar",            "fn:results", "primary", BE.stats)],
-    [ibtn("✉️ So'rovnoma yuborish",  "fn:send",    "primary", BE.broadcast)],
-    [ibtn("🗑 O'chirish",            "fn:delete",  "danger",  BE.chDelete)],
-    [ibtn("Menyuga qaytish",         "fn:close",   undefined, BE.backMenu)],
+    [ibtn("So'rovnoma yaratish",  "fn:create",  "success", BE.chAdd)],
+    [ibtn("Natijalar",            "fn:results", "primary", BE.stats)],
+    [ibtn("So'rovnoma yuborish",  "fn:send",    "primary", BE.broadcast)],
+    [ibtn("O'chirish",            "fn:delete",  "danger",  BE.chDelete)],
+    [ibtn("Menyuga qaytish",      "fn:close",   undefined, BE.backMenu)],
   );
 }
 
 funnelHandler.hears(ADMIN_MENU_BUTTONS.funnel, async (ctx) => {
   if (!isOwner(ctx.from?.id)) return;
   clearF(ctx);
-  await ctx.reply("📊 <b>Funnel (So'rovnomalar)</b>", { reply_markup: funnelMenu() });
+  await ctx.reply("<b>Funnel — So'rovnomalar</b>", { reply_markup: funnelMenu() });
 });
 
 funnelHandler.callbackQuery("fn:close", async (ctx) => {
@@ -59,7 +59,7 @@ funnelHandler.callbackQuery("fn:close", async (ctx) => {
 funnelHandler.callbackQuery("fn:menu", async (ctx) => {
   await ctx.answerCallbackQuery();
   clearF(ctx);
-  await ctx.editMessageText("📊 <b>Funnel (So'rovnomalar)</b>", { reply_markup: funnelMenu() }).catch(() => {});
+  await ctx.editMessageText("<b>Funnel — So'rovnomalar</b>", { reply_markup: funnelMenu() }).catch(() => {});
 });
 
 // ─── Yaratish ────────────────────────────────────────────────────────────────
@@ -84,7 +84,7 @@ funnelHandler.callbackQuery("fn:results", async (ctx) => {
   }
   const rows = surveys.map((s) => [ibtn(s.title, `fn:stat:${s.id}`, "primary")]);
   rows.push([ibtn("Orqaga", "fn:menu", undefined, BE.backMenu)]);
-  await ctx.editMessageText("📊 <b>Qaysi so'rovnoma natijasi?</b>", { reply_markup: kb(...rows) }).catch(() => {});
+  await ctx.editMessageText("<b>Qaysi so'rovnoma natijasi?</b>", { reply_markup: kb(...rows) }).catch(() => {});
 });
 
 funnelHandler.callbackQuery(/^fn:stat:(\d+)$/, async (ctx) => {
@@ -105,12 +105,12 @@ funnelHandler.callbackQuery(/^fn:stat:(\d+)$/, async (ctx) => {
   const notAnswered = Math.max(0, totalSent - totalAnswered);
 
   const lines = [
-    `📊 <b>${e.escapeHtml(survey.title)}</b>`,
-    `❓ ${e.escapeHtml(survey.question)}`,
+    `<b>${e.escapeHtml(survey.title)}</b>`,
+    `${e.escapeHtml(survey.question)}`,
     ``,
-    `📤 Yuborilgan: <b>${totalSent}</b>`,
-    `✅ Javob berdi: <b>${totalAnswered}</b>`,
-    `😶 Javob bermadi: <b>${notAnswered}</b>`,
+    `Yuborilgan: <b>${totalSent}</b>`,
+    `Javob berdi: <b>${totalAnswered}</b>`,
+    `Javob bermadi: <b>${notAnswered}</b>`,
     ``,
     `<b>Natijalar:</b>`,
   ];
@@ -125,7 +125,7 @@ funnelHandler.callbackQuery(/^fn:stat:(\d+)$/, async (ctx) => {
   await ctx.editMessageText(
     lines.join("\n"),
     { reply_markup: kb(
-      [ibtn("🗺 Viloyat bo'yicha", `fn:statregion:${survey.id}`, "primary")],
+      [ibtn("Viloyat bo'yicha", `fn:statregion:${survey.id}`, "primary", BE.trend)],
       [ibtn("Orqaga", "fn:results", undefined, BE.backMenu)],
     )}
   ).catch(() => {});
@@ -149,7 +149,7 @@ funnelHandler.callbackQuery(/^fn:statregion:(\d+)$/, async (ctx) => {
     byRegion[region][optText] = (byRegion[region][optText] ?? 0) + 1;
   }
 
-  const lines = ["🗺 <b>Viloyat bo'yicha natijalar:</b>", ""];
+  const lines = ["<b>Viloyat bo'yicha natijalar:</b>", ""];
   for (const [region, opts] of Object.entries(byRegion).sort()) {
     const total = Object.values(opts).reduce((a, b) => a + b, 0);
     lines.push(`<b>${e.escapeHtml(region)}</b>: ${total} ta`);
@@ -175,7 +175,7 @@ funnelHandler.callbackQuery("fn:send", async (ctx) => {
   }
   const rows = surveys.map((s) => [ibtn(s.title, `fn:sendsurvey:${s.id}`, "primary")]);
   rows.push([ibtn("Orqaga", "fn:menu", undefined, BE.backMenu)]);
-  await ctx.editMessageText("✉️ <b>Qaysi so'rovnomani yuborasiz?</b>", { reply_markup: kb(...rows) }).catch(() => {});
+  await ctx.editMessageText("<b>Qaysi so'rovnomani yuborasiz?</b>", { reply_markup: kb(...rows) }).catch(() => {});
 });
 
 funnelHandler.callbackQuery(/^fn:sendsurvey:(\d+)$/, async (ctx) => {
@@ -184,11 +184,11 @@ funnelHandler.callbackQuery(/^fn:sendsurvey:(\d+)$/, async (ctx) => {
   setF(ctx, { state: "sendTarget", surveyId, options: [] });
   const count = await prisma.user.count({ where: { isBlocked: false } });
   await ctx.editMessageText(
-    `📤 <b>So'rovnoma yuborish</b>\n\nKimga yuborasiz?`,
+    `<b>So'rovnoma yuborish</b>\n\nKimga yuborasiz?`,
     {
       reply_markup: kb(
-        [ibtn(`👥 Hammaga (${count})`, `fn:dosend:all`, "primary")],
-        [ibtn("📅 Sana oralig'i bo'yicha", `fn:dosend:daterange`, "primary")],
+        [ibtn(`Hammaga (${count})`, `fn:dosend:all`, "primary", BE.stats)],
+        [ibtn("Sana oralig'i bo'yicha", `fn:dosend:daterange`, "primary")],
         [ibtn("Orqaga", "fn:send", undefined, BE.backMenu)],
       ),
     }
@@ -205,7 +205,7 @@ funnelHandler.callbackQuery(/^fn:dosend:(all|daterange)$/, async (ctx) => {
     f.state = "sendDateFrom";
     setF(ctx, f);
     await ctx.editMessageText(
-      "📅 Boshlanish sanasini kiriting (DD.MM.YYYY):",
+      "Boshlanish sanasini kiriting (DD.MM.YYYY):",
       { reply_markup: kb([ibtn("❌ Bekor", "fn:menu", "danger")]) }
     ).catch(() => {});
     return;
@@ -237,7 +237,7 @@ async function sendSurveyToUsers(ctx: MyContext, surveyId: number, targetType: s
   };
 
   let sent = 0;
-  const statusMsg = await ctx.reply(`⏳ Yuborilmoqda: 0 / ${total}...`);
+  const statusMsg = await ctx.reply(`Yuborilmoqda: 0 / ${total}...`);
 
   for (let i = 0; i < users.length; i++) {
     try {
@@ -260,7 +260,7 @@ async function sendSurveyToUsers(ctx: MyContext, surveyId: number, targetType: s
   clearF(ctx);
   await ctx.api.editMessageText(
     ctx.chat!.id, statusMsg.message_id,
-    `✅ <b>Yuborildi!</b>\n\n📤 Yuborildi: <b>${sent}</b>\n❌ Yuborilmadi: <b>${total - sent}</b>`
+    `<b>Yuborildi!</b>\n\nYuborildi: <b>${sent}</b>\nYuborilmadi: <b>${total - sent}</b>`
   ).catch(() => {});
 }
 
@@ -273,15 +273,15 @@ funnelHandler.callbackQuery("fn:delete", async (ctx) => {
     await ctx.answerCallbackQuery({ text: "So'rovnoma yo'q.", show_alert: true });
     return;
   }
-  const rows = surveys.map((s) => [ibtn(`🗑 ${s.title}`, `fn:delconf:${s.id}`, "danger")]);
+  const rows = surveys.map((s) => [ibtn(s.title, `fn:delconf:${s.id}`, "danger", BE.chDelete)]);
   rows.push([ibtn("Orqaga", "fn:menu", undefined, BE.backMenu)]);
-  await ctx.editMessageText("🗑 <b>Qaysi so'rovnomani o'chirasiz?</b>", { reply_markup: kb(...rows) }).catch(() => {});
+  await ctx.editMessageText("<b>Qaysi so'rovnomani o'chirasiz?</b>", { reply_markup: kb(...rows) }).catch(() => {});
 });
 
 funnelHandler.callbackQuery(/^fn:delconf:(\d+)$/, async (ctx) => {
   await prisma.survey.delete({ where: { id: Number(ctx.match[1]) } }).catch(() => {});
   await ctx.answerCallbackQuery({ text: "O'chirildi." });
-  await ctx.editMessageText("🗑 So'rovnoma o'chirildi.", { reply_markup: kb([ibtn("Orqaga", "fn:menu", undefined, BE.backMenu)]) }).catch(() => {});
+  await ctx.editMessageText("So'rovnoma o'chirildi.", { reply_markup: kb([ibtn("Orqaga", "fn:menu", undefined, BE.backMenu)]) }).catch(() => {});
 });
 
 // ─── Matn kiritish (message handler) ────────────────────────────────────────
@@ -387,14 +387,14 @@ async function saveSurvey(ctx: MyContext, f: FData) {
 
   clearF(ctx);
   await ctx.reply(
-    `✅ <b>So'rovnoma yaratildi!</b>\n\n` +
-    `📌 Sarlavha: <b>${e.escapeHtml(f.title)}</b>\n` +
-    `❓ Savol: ${e.escapeHtml(f.question)}\n` +
-    `📋 Variantlar: <b>${f.options.length}</b> ta\n` +
-    (isRegion ? `🗺 Viloyat so'rovnomasi sifatida belgilandi.` : ""),
+    `<b>So'rovnoma yaratildi!</b>\n\n` +
+    `Sarlavha: <b>${e.escapeHtml(f.title)}</b>\n` +
+    `Savol: ${e.escapeHtml(f.question)}\n` +
+    `Variantlar: <b>${f.options.length}</b> ta\n` +
+    (isRegion ? `Viloyat so'rovnomasi sifatida belgilandi.` : ""),
     { reply_markup: kb(
-      [ibtn("✉️ Hozir yuborish", `fn:sendsurvey:${survey.id}`, "success")],
-      [ibtn("📊 Menyuga", "fn:menu", "primary")],
+      [ibtn("Hozir yuborish", `fn:sendsurvey:${survey.id}`, "success", BE.broadcast)],
+      [ibtn("Menyuga",        "fn:menu",                    "primary", BE.backMenu)],
     )}
   );
 }

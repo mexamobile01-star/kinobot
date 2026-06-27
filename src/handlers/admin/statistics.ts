@@ -1,11 +1,12 @@
 import { Composer } from "grammy";
 import { prisma } from "../../prisma.js";
 import { ce, e } from "../../utils/emoji.js";
+import { ADMIN_MENU_BUTTONS } from "../../utils/keyboard.js";
 import type { MyContext } from "../../types.js";
 
 export const statisticsHandler = new Composer<MyContext>();
 
-statisticsHandler.hears("📊 Statistika", async (ctx) => {
+statisticsHandler.hears(ADMIN_MENU_BUTTONS.stats, async (ctx) => {
   const [
     users,
     blocked,

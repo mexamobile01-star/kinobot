@@ -100,9 +100,7 @@ export function adminMenuKeyboard(owner = false): Keyboard {
 // ===================== FOYDALANUVCHI REPLY KEYBOARD =====================
 export function userMenuKeyboard(): Keyboard {
   return new Keyboard()
-    .text("🔎 Kino qidirish")
-    .row()
-    .text("ℹ️ Yordam")
+    .text("🔎 Kino qidirish", { icon_custom_emoji_id: "5429571366384842791" })
     .resized();
 }
 

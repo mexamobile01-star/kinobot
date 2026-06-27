@@ -2,7 +2,7 @@ import { Composer, InlineKeyboard } from "grammy";
 import { prisma } from "../prisma.js";
 import { ce, e } from "../utils/emoji.js";
 import { contentButtonMarkup } from "../utils/contentButton.js";
-import { getGlobalButton } from "../utils/settings.js";
+import { getGlobalButton, getBool, KEYS } from "../utils/settings.js";
 import type { MyContext } from "../types.js";
 
 export const serialViewHandler = new Composer<MyContext>();
@@ -44,14 +44,13 @@ export async function sendSerialSeasons(ctx: MyContext, serialId: number) {
     (serial.caption ? `\n${e.escapeHtml(serial.caption)}\n` : "") +
     `\nSezonni tanlang:`;
 
-  const globalBtn = await getGlobalButton("serial");
+  const enabled   = await getBool(KEYS.serialBtnEnabled, true);
+  const globalBtn = enabled ? await getGlobalButton("serial") : { buttonText: null, buttonUrl: null, buttonStyle: "primary" };
+  const markup    = contentButtonMarkup(globalBtn, rows);
   if (serial.posterId) {
-    await ctx.replyWithPhoto(serial.posterId, {
-      caption,
-      reply_markup: contentButtonMarkup(globalBtn, rows),
-    });
+    await ctx.replyWithPhoto(serial.posterId, { caption, reply_markup: markup });
   } else {
-    await ctx.reply(caption, { reply_markup: contentButtonMarkup(globalBtn, rows) });
+    await ctx.reply(caption, { reply_markup: markup });
   }
 }
 

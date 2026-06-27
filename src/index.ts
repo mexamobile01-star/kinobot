@@ -90,7 +90,6 @@ async function main() {
 
   await bot.api.setMyCommands([
     { command: "start", description: "Botni ishga tushirish" },
-    { command: "help", description: "Yordam" },
   ]);
 
   for (const id of config.ownerIds) {
@@ -104,6 +103,12 @@ async function main() {
       )
       .catch(() => {});
   }
+
+  // Bot nomini o'rnatish
+  await bot.api.setMyName("Kino vaqti").catch(() => {});
+  await bot.api.setMyDescription(
+    "🎬 Kino va seriallarni kod orqali toping. Inline rejimda ham ishlaydi."
+  ).catch(() => {});
 
   const me = await bot.api.getMe();
 

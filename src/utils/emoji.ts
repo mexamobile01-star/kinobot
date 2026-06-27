@@ -22,9 +22,11 @@ export const EMOJI_IDS = {
   tv: "4918438965029110683",
   folder: "5260416304224936047",
   check: "5260342697075416641",
+  subCheck: "5861665979968262792",
+  botName: "5258077307985207053",
+  search: "5429571366384842791",
 } as const;
 
-// Har bir custom emoji uchun oddiy fallback (custom ko'rinmasa)
 const FALLBACK: Record<keyof typeof EMOJI_IDS, string> = {
   settings: "⚙️",
   list: "📋",
@@ -39,6 +41,9 @@ const FALLBACK: Record<keyof typeof EMOJI_IDS, string> = {
   tv: "📺",
   folder: "🗂",
   check: "✅",
+  subCheck: "✅",
+  botName: "🎬",
+  search: "🔎",
 };
 
 function escapeHtml(s: string): string {
