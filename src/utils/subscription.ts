@@ -32,9 +32,11 @@ export async function getUnsubscribedChannels(
         return { channel: ch, isSubscribed: true };
       }
 
-      // So'rovli kanal: a'zo bo'lmasa ham so'rov yuborganini tekshirish
+      // So'rovli kanal: a'zo bo'lmasa ham PENDING so'rov yuborganini tekshirish.
+      // "approved" holat hisobga olinmaydi — chunki tasdiqlangandan keyin kanaldan
+      // chiqib ketgan bo'lishi mumkin, bunday holda qayta so'rov talab qilinadi.
       if (ch.type === "REQUEST") {
-        const req = await prisma.joinRequest.findUnique({
+        const pending = await prisma.joinRequest.findUnique({
           where: {
             channelId_userId: {
               channelId: ch.chatId,
@@ -42,8 +44,7 @@ export async function getUnsubscribedChannels(
             },
           },
         });
-        // So'rov yuborilgan bo'lsa (pending yoki approved) — o'tkazib yuborish
-        if (req) return { channel: ch, isSubscribed: true };
+        if (pending?.status === "pending") return { channel: ch, isSubscribed: true };
       }
 
       return { channel: ch, isSubscribed: false };

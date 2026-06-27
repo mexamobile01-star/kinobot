@@ -40,6 +40,31 @@ bot.on("chat_join_request", async (ctx) => {
   // Avtomatik tasdiqlash YO'Q — admin joinStats orqali qabul qiladi
 });
 
+// ===== Foydalanuvchi kanaldan chiqsa — so'rov yozuvini o'chirish =====
+// (Keyingi kirish uchun qaytadan so'rov yubora olsin)
+bot.on("chat_member", async (ctx) => {
+  const update = ctx.chatMember;
+  if (!update) return;
+  const newStatus = update.new_chat_member.status;
+  const oldStatus = update.old_chat_member.status;
+  const userId    = update.new_chat_member.user.id;
+  const chatId    = update.chat.id;
+
+  // A'zolikdan chiqqan yoki chiqarib yuborilgan
+  const leftStatuses = ["left", "kicked"];
+  const wasIn = !leftStatuses.includes(oldStatus);
+  const nowOut = leftStatuses.includes(newStatus);
+  if (!wasIn || !nowOut) return;
+
+  // Shu kanal REQUEST turida bo'lsa — so'rov yozuvini o'chiramiz
+  const ch = await prisma.channel.findUnique({ where: { chatId: BigInt(chatId) } });
+  if (ch?.type === "REQUEST") {
+    await prisma.joinRequest.deleteMany({
+      where: { channelId: BigInt(chatId), userId: BigInt(userId) },
+    }).catch(() => null);
+  }
+});
+
 // ===== Handler'lar (tartib muhim!) =====
 bot.use(adminHandler);      // admin panel (faqat adminlar)
 bot.use(startHandler);      // /start, /help, obuna tekshiruvi
@@ -94,7 +119,7 @@ async function main() {
 
     await bot.api.setWebhook(webhookUrl, {
       secret_token: secret,
-      allowed_updates: ["message", "callback_query", "inline_query", "chat_join_request"],
+      allowed_updates: ["message", "callback_query", "inline_query", "chat_join_request", "chat_member"],
     });
 
     const handle = webhookCallback(bot, "http", {
