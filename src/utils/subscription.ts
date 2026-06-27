@@ -7,7 +7,7 @@ import type { Channel } from "@prisma/client";
 
 const SUBSCRIBED_STATUSES = ["creator", "administrator", "member", "restricted"];
 
-/** Foydalanuvchi a'zo bo'lmagan kanallarni qaytaradi */
+/** Foydalanuvchi a'zo bo'lmagan (yoki so'rov yubormagan) kanallarni qaytaradi */
 export async function getUnsubscribedChannels(
   ctx: MyContext,
   userId: number
@@ -20,14 +20,33 @@ export async function getUnsubscribedChannels(
 
   const results = await Promise.all(
     channels.map(async (ch) => {
-      // Instagram obunasini API orqali tekshirib bo'lmaydi
+      // Instagram: API orqali tekshirib bo'lmaydi — har doim ko'rsatiladi
       if (ch.type === "INSTAGRAM") return { channel: ch, isSubscribed: false };
 
+      // Avval Telegram membershipni tekshirish
       const member = await ctx.api
         .getChatMember(Number(ch.chatId), userId)
         .catch(() => null);
-      const isSubscribed = !!member && SUBSCRIBED_STATUSES.includes(member.status);
-      return { channel: ch, isSubscribed };
+
+      if (member && SUBSCRIBED_STATUSES.includes(member.status)) {
+        return { channel: ch, isSubscribed: true };
+      }
+
+      // So'rovli kanal: a'zo bo'lmasa ham so'rov yuborganini tekshirish
+      if (ch.type === "REQUEST") {
+        const req = await prisma.joinRequest.findUnique({
+          where: {
+            channelId_userId: {
+              channelId: ch.chatId,
+              userId: BigInt(userId),
+            },
+          },
+        });
+        // So'rov yuborilgan bo'lsa (pending yoki approved) — o'tkazib yuborish
+        if (req) return { channel: ch, isSubscribed: true };
+      }
+
+      return { channel: ch, isSubscribed: false };
     })
   );
 

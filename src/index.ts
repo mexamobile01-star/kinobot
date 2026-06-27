@@ -37,16 +37,7 @@ bot.on("chat_join_request", async (ctx) => {
     update: { status: "pending", date: new Date() },
   }).catch(() => null);
 
-  // Avtomatik tasdiqlash
-  try {
-    await ctx.approveChatJoinRequest(userId);
-    await prisma.joinRequest.update({
-      where: { channelId_userId: { channelId: BigInt(chatId), userId: BigInt(userId) } },
-      data: { status: "approved" },
-    }).catch(() => null);
-  } catch {
-    // Tasdiqlash imkonsiz bo'lsa — pending holda qoladi
-  }
+  // Avtomatik tasdiqlash YO'Q — admin joinStats orqali qabul qiladi
 });
 
 // ===== Handler'lar (tartib muhim!) =====
