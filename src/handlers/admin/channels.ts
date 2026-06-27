@@ -217,12 +217,12 @@ channelsHandler.callbackQuery("ch:add", async (ctx) => {
     {
       reply_markup: kb(
         [
-          ibtn("Ommaviy",   "ch:type:PUBLIC",  "primary", "5258476306152038031"),
-          ibtn("Maxfiy",    "ch:type:PRIVATE", "success", "5260268501515377807"),
+          ibtn("Ommaviy",   "ch:type:PUBLIC",  "primary", "5260268501515377807"),
+          ibtn("Maxfiy",    "ch:type:PRIVATE", "success", "5258476306152038031"),
         ],
         [
-          ibtn("So'rovli",  "ch:type:REQUEST",   "danger",  "5258205968025525531"),
-          ibtn("Instagram", "ch:type:INSTAGRAM", "primary", "5258419835922030550"),
+          ibtn("So'rovli",  "ch:type:REQUEST",   "danger",  "5258419835922030550"),
+          ibtn("Instagram", "ch:type:INSTAGRAM", "primary", "5258205968025525531"),
         ],
         [ibtn("Orqaga", "ch:menu", undefined, BE.backMenu)],
       ),
