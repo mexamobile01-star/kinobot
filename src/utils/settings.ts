@@ -33,13 +33,15 @@ export function clearSettingsCache(): void {
 }
 
 export const KEYS = {
-  forceSubEnabled: "force_sub_enabled",
-  movieBtnText:   "movie_btn_text",
-  movieBtnUrl:    "movie_btn_url",
-  movieBtnStyle:  "movie_btn_style",
-  serialBtnText:  "serial_btn_text",
-  serialBtnUrl:   "serial_btn_url",
-  serialBtnStyle: "serial_btn_style",
+  forceSubEnabled:  "force_sub_enabled",
+  movieBtnText:     "movie_btn_text",
+  movieBtnUrl:      "movie_btn_url",
+  movieBtnStyle:    "movie_btn_style",
+  serialBtnText:    "serial_btn_text",
+  serialBtnUrl:     "serial_btn_url",
+  serialBtnStyle:   "serial_btn_style",
+  subCheckBtnText:  "sub_check_btn_text",
+  subCheckBtnStyle: "sub_check_btn_style",
 } as const;
 
 export async function getGlobalButton(prefix: "movie" | "serial") {

@@ -1,6 +1,7 @@
 import { InlineKeyboard } from "grammy";
 import { prisma } from "../prisma.js";
 import { ce } from "./emoji.js";
+import { getSetting, KEYS } from "./settings.js";
 import type { MyContext } from "../types.js";
 import type { Channel } from "@prisma/client";
 
@@ -15,58 +16,79 @@ export async function getUnsubscribedChannels(
     where: { isActive: true },
     orderBy: { sortOrder: "asc" },
   });
+  if (channels.length === 0) return [];
 
-  const notJoined: Channel[] = [];
+  const results = await Promise.all(
+    channels.map(async (ch) => {
+      // Instagram obunasini API orqali tekshirib bo'lmaydi
+      if (ch.type === "INSTAGRAM") return { channel: ch, isSubscribed: false };
 
-  for (const ch of channels) {
-    // So'rovli (REQUEST) kanallarda getChatMember ko'pincha ishlamaydi (so'rov yuborilgan, hali a'zo emas).
-    // Shu sabab REQUEST/PRIVATE uchun ham getChatMember sinab ko'ramiz, xato bo'lsa — a'zo emas deb hisoblaymiz.
-    try {
-      const member = await ctx.api.getChatMember(Number(ch.chatId), userId);
-      if (!SUBSCRIBED_STATUSES.includes(member.status)) {
-        notJoined.push(ch);
-      }
-    } catch {
-      // Bot kanalda admin emas yoki kanal topilmadi — tekshira olmaymiz, a'zo emas deb hisoblaymiz
-      notJoined.push(ch);
-    }
-  }
+      const member = await ctx.api
+        .getChatMember(Number(ch.chatId), userId)
+        .catch(() => null);
+      const isSubscribed = !!member && SUBSCRIBED_STATUSES.includes(member.status);
+      return { channel: ch, isSubscribed };
+    })
+  );
 
-  return notJoined;
+  return results.filter((r) => !r.isSubscribed).map((r) => r.channel);
 }
 
-/** Obuna bo'lish taklifi xabarini yuboradi */
+/** Obuna so'rovi xabarini yuboradi */
 export async function sendSubscriptionPrompt(
   ctx: MyContext,
   channels: Channel[]
 ): Promise<void> {
+  const btnText  = await getSetting(KEYS.subCheckBtnText,  "✅ Tekshirish");
+  const btnStyle = await getSetting(KEYS.subCheckBtnStyle, "success");
+
   const kb = new InlineKeyboard();
   for (const ch of channels) {
     const url = channelUrl(ch);
-    if (url) kb.url(`📢 ${ch.title}`, url).row();
+    if (url) {
+      const label = ch.buttonLabel?.trim() || (ch.type === "INSTAGRAM" ? `📸 ${ch.title}` : `📢 ${ch.title}`);
+      kb.url(label, url).row();
+    }
   }
-  kb.text("✅ Tekshirish", "sub:check");
 
-  await ctx.reply(
-    `${ce("fire")} <b>Botdan foydalanish uchun</b> quyidagi kanal(lar)ga a'zo bo'ling:\n\n` +
-      `So'ng <b>✅ Tekshirish</b> tugmasini bosing.`,
-    { reply_markup: kb }
-  );
+  // "Tekshirish" knopkasi faqat Telegram kanallar uchun (Instagram emas)
+  const hasTgChannels = channels.some((c) => c.type !== "INSTAGRAM");
+  if (hasTgChannels) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (kb as any).inline_keyboard.push([{
+      text: btnText,
+      callback_data: "sub:check",
+      style: btnStyle,
+    }]);
+  }
+
+  const igCount = channels.filter((c) => c.type === "INSTAGRAM").length;
+  const tgCount = channels.filter((c) => c.type !== "INSTAGRAM").length;
+
+  let text = `${ce("fire")} <b>Botdan foydalanish uchun</b> quyidagi kanal(lar)ga a'zo bo'ling:\n\n`;
+  if (tgCount > 0) text += `📢 Telegram: <b>${tgCount}</b> ta kanal\n`;
+  if (igCount > 0) text += `📸 Instagram: <b>${igCount}</b> ta profil\n`;
+  text += `\nA'zo bo'lgach <b>${btnText}</b> tugmasini bosing.`;
+
+  await ctx.reply(text, { reply_markup: kb });
 }
 
 export function channelUrl(ch: Channel): string | null {
+  if (ch.type === "INSTAGRAM") return ch.inviteLink ?? null;
   if (ch.username) return `https://t.me/${ch.username.replace(/^@/, "")}`;
   if (ch.inviteLink) return ch.inviteLink;
   return null;
 }
 
-/** True qaytarsa — foydalanuvchi hamma kanalga a'zo (yoki kanal yo'q) */
+/** True qaytarsa — foydalanuvchi hamma Telegram kanalga a'zo (yoki kanal yo'q) */
 export async function ensureSubscribed(
   ctx: MyContext,
   userId: number
 ): Promise<boolean> {
   const notJoined = await getUnsubscribedChannels(ctx, userId);
-  if (notJoined.length === 0) return true;
+  // Instagram kanallarini obunasiz ham o'tkazib yuboramiz (tekshirish imkonsiz)
+  const blocking = notJoined.filter((c) => c.type !== "INSTAGRAM");
+  if (blocking.length === 0) return true;
   await sendSubscriptionPrompt(ctx, notJoined);
   return false;
 }

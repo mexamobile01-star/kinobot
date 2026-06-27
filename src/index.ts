@@ -3,7 +3,7 @@ import { run } from "@grammyjs/runner";
 import { webhookCallback } from "grammy";
 import { bot } from "./bot.js";
 import { prisma } from "./prisma.js";
-import { config } from "./config.js";
+import { addAdminId, config } from "./config.js";
 import { trackUser } from "./middlewares/user.js";
 
 import { adminHandler } from "./handlers/admin/index.js";
@@ -15,14 +15,37 @@ import { inlineHandler } from "./handlers/inline.js";
 // ===== Middleware: foydalanuvchini bazaga yozish =====
 bot.use(trackUser);
 
-// ===== "So'rovli" kanallar uchun join so'rovini avtomatik tasdiqlash =====
+// ===== "So'rovli" kanallar uchun join so'rovini kuzatish va tasdiqlash =====
 bot.on("chat_join_request", async (ctx) => {
   const chatId = ctx.chatJoinRequest.chat.id;
-  const known = await prisma.channel.findUnique({
-    where: { chatId: BigInt(chatId) },
-  });
-  if (known) {
-    await ctx.approveChatJoinRequest(ctx.chatJoinRequest.from.id).catch(() => {});
+  const userId = ctx.chatJoinRequest.from.id;
+
+  // DB'da kanal mavjudligini tekshirish
+  const known = await prisma.channel.findUnique({ where: { chatId: BigInt(chatId) } });
+  if (!known) return;
+
+  // So'rovni bazaga yozish (yoki mavjud bo'lsa yangilash)
+  await prisma.joinRequest.upsert({
+    where: { channelId_userId: { channelId: BigInt(chatId), userId: BigInt(userId) } },
+    create: {
+      channelId: BigInt(chatId),
+      userId:    BigInt(userId),
+      firstName: ctx.chatJoinRequest.from.first_name ?? null,
+      username:  ctx.chatJoinRequest.from.username ?? null,
+      status:    "pending",
+    },
+    update: { status: "pending", date: new Date() },
+  }).catch(() => null);
+
+  // Avtomatik tasdiqlash
+  try {
+    await ctx.approveChatJoinRequest(userId);
+    await prisma.joinRequest.update({
+      where: { channelId_userId: { channelId: BigInt(chatId), userId: BigInt(userId) } },
+      data: { status: "approved" },
+    }).catch(() => null);
+  } catch {
+    // Tasdiqlash imkonsiz bo'lsa — pending holda qoladi
   }
 });
 
@@ -43,12 +66,18 @@ async function main() {
   await prisma.$connect();
   console.log("✅ DB ulandi");
 
+  const dbAdmins = await prisma.user.findMany({
+    where: { isAdmin: true },
+    select: { id: true },
+  });
+  for (const admin of dbAdmins) addAdminId(admin.id);
+
   await bot.api.setMyCommands([
     { command: "start", description: "Botni ishga tushirish" },
     { command: "help", description: "Yordam" },
   ]);
 
-  for (const id of config.adminIds) {
+  for (const id of config.ownerIds) {
     await bot.api
       .setMyCommands(
         [

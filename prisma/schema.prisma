@@ -13,7 +13,7 @@ datasource db {
 
 // ===================== FOYDALANUVCHILAR =====================
 model User {
-  id        BigInt   @id // Telegram user id
+  id        BigInt   @id
   firstName String?
   username  String?
   isBlocked Boolean  @default(false)
@@ -26,37 +26,61 @@ model User {
 
 // ===================== MAJBURIY OBUNA KANALLARI =====================
 enum ChannelType {
-  PUBLIC // Ommaviy — @username bor
-  PRIVATE // Maxfiy — havola orqali
-  REQUEST // So'rovli — apply to join
+  PUBLIC    // Ommaviy — @username bor
+  PRIVATE   // Maxfiy — havola orqali
+  REQUEST   // So'rovli — apply to join
+  INSTAGRAM // Instagram profil — API tekshiruvi yo'q
 }
 
 model Channel {
-  id         Int         @id @default(autoincrement())
-  chatId     BigInt      @unique // Telegram chat id (-100...)
-  title      String
-  username   String? // @ siz, faqat PUBLIC uchun
-  inviteLink String? // PRIVATE / REQUEST uchun
-  type       ChannelType @default(PUBLIC)
-  isActive   Boolean     @default(true)
-  sortOrder  Int         @default(0)
-  createdAt  DateTime    @default(now())
+  id          Int         @id @default(autoincrement())
+  chatId      BigInt      @unique // Telegram chat id (-100...) yoki 0 Instagram uchun
+  title       String
+  username    String?
+  inviteLink  String?     // PRIVATE/REQUEST uchun havola; INSTAGRAM uchun profil URL
+  type        ChannelType @default(PUBLIC)
+  isActive    Boolean     @default(true)
+  sortOrder   Int         @default(0)
+  buttonLabel String?     // Obuna sahifasida ko'rsatiladigan maxsus yorliq
+  createdAt   DateTime    @default(now())
+
+  joinRequests JoinRequest[]
 
   @@map("channels")
+}
+
+// ===================== QO'SHILISH SO'ROVLARI (REQUEST kanallari) =====================
+model JoinRequest {
+  id        Int      @id @default(autoincrement())
+  channelId BigInt
+  userId    BigInt
+  firstName String?
+  username  String?
+  status    String   @default("pending") // pending | approved | declined
+  date      DateTime @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [chatId])
+
+  @@unique([channelId, userId])
+  @@index([channelId, date])
+  @@map("join_requests")
 }
 
 // ===================== KINO =====================
 model Movie {
   id          Int      @id @default(autoincrement())
-  code        Int      @unique // foydalanuvchi yozadigan kod
+  code        Int      @unique
   title       String
-  caption     String? // qo'shimcha tavsif
-  fileId      String // Telegram video file_id
-  baseMsgId   Int? // baza kanaldagi xabar id
+  caption     String?
+  fileId      String
+  baseMsgId   Int?
   year        Int?
   genre       String?
   quality     String?
-  language     String?
+  language    String?
+  buttonText  String?
+  buttonUrl   String?
+  buttonStyle String   @default("primary")
   views       Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -67,16 +91,19 @@ model Movie {
 
 // ===================== SERIAL =====================
 model Serial {
-  id        Int      @id @default(autoincrement())
-  code      Int      @unique
-  title     String
-  caption   String?
-  posterId  String? // poster rasm file_id (ixtiyoriy)
-  year      Int?
-  genre     String?
-  views     Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  code        Int      @unique
+  title       String
+  caption     String?
+  posterId    String?
+  year        Int?
+  genre       String?
+  buttonText  String?
+  buttonUrl   String?
+  buttonStyle String   @default("primary")
+  views       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   seasons Season[]
 
@@ -85,9 +112,9 @@ model Serial {
 }
 
 model Season {
-  id       Int    @id @default(autoincrement())
+  id       Int     @id @default(autoincrement())
   serialId Int
-  number   Int // sezon raqami
+  number   Int
   title    String?
 
   serial   Serial    @relation(fields: [serialId], references: [id], onDelete: Cascade)
@@ -100,9 +127,9 @@ model Season {
 model Episode {
   id        Int      @id @default(autoincrement())
   seasonId  Int
-  number    Int // qism raqami
+  number    Int
   title     String?
-  fileId    String // video file_id
+  fileId    String
   baseMsgId Int?
   createdAt DateTime @default(now())
 
@@ -112,7 +139,7 @@ model Episode {
   @@map("episodes")
 }
 
-// ===================== SOZLAMALAR (kalit-qiymat) =====================
+// ===================== SOZLAMALAR =====================
 model Setting {
   key       String   @id
   value     String

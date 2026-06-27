@@ -1,9 +1,11 @@
 import { Composer, Keyboard } from "grammy";
+import type { ChatAdministratorRights } from "grammy/types";
 import { isOwner } from "../../config.js";
 import { prisma } from "../../prisma.js";
 import { ce, e } from "../../utils/emoji.js";
 import { ADMIN_MENU_BUTTONS, adminMenuKeyboard, ibtn, BE, kb } from "../../utils/keyboard.js";
-import { getBool, setBool, KEYS } from "../../utils/settings.js";
+import { getBool, setBool, getSetting, setSetting, KEYS } from "../../utils/settings.js";
+import { resolveButtonStyle } from "../../utils/contentButton.js";
 import type { MyContext } from "../../types.js";
 import type { ChannelType } from "@prisma/client";
 
@@ -11,6 +13,15 @@ export const channelsHandler = new Composer<MyContext>();
 
 const REQ_CHANNEL = 1;
 const REQ_GROUP   = 2;
+
+// Bot uchun minimal admin huquqlar — requestChat bilan auto-add qilish uchun
+const BOT_RIGHTS: ChatAdministratorRights = {
+  is_anonymous: false, can_manage_chat: true, can_delete_messages: false,
+  can_manage_video_chats: false, can_restrict_members: false, can_promote_members: false,
+  can_change_info: false, can_invite_users: true, can_post_messages: false,
+  can_edit_messages: false, can_pin_messages: false, can_post_stories: false,
+  can_edit_stories: false, can_delete_stories: false, can_manage_topics: false,
+};
 
 interface PendingChannel {
   chatId: number;
@@ -33,15 +44,18 @@ async function channelMenuData() {
     [
       ibtn(
         enabled ? "Majburiy obuna: Yoqilgan" : "Majburiy obuna: O'chirilgan",
-        "ch:toggle",
-        enabled ? "success" : "danger",
+        "ch:toggle", enabled ? "success" : "danger",
         enabled ? BE.subOn : BE.subOff
       ),
       ibtn(`Ro'yxat (${count})`, "ch:list", "primary", BE.chList),
     ],
     [
-      ibtn("Qo'shish",  "ch:add", "success", BE.chAdd),
-      ibtn("O'chirish", "ch:del", "danger", BE.chDelete),
+      ibtn("Qo'shish",  "ch:add",  "success", BE.chAdd),
+      ibtn("O'chirish", "ch:del",  "danger",  BE.chDelete),
+    ],
+    [
+      ibtn("🎨 Knopka sozlamalari", "ch:btnsettings", "primary"),
+      ibtn("📊 So'rovlar",          "ch:jrstats",     "primary"),
     ],
     [ibtn("Menyuga qaytish", "ch:close", undefined, BE.backMenu)],
   );
@@ -65,9 +79,7 @@ channelsHandler.callbackQuery("ch:menu",  async (ctx) => { await ctx.answerCallb
 channelsHandler.callbackQuery("ch:close", async (ctx) => {
   await ctx.answerCallbackQuery();
   await ctx.deleteMessage().catch(() => {});
-  await ctx.reply("Admin panel:", {
-    reply_markup: adminMenuKeyboard(isOwner(ctx.from.id)),
-  });
+  await ctx.reply("Admin panel:", { reply_markup: adminMenuKeyboard(isOwner(ctx.from.id)) });
 });
 
 // ============ TOGGLE ============
@@ -85,62 +97,176 @@ channelsHandler.callbackQuery("ch:list", async (ctx) => {
     await ctx.answerCallbackQuery({ text: "Hozircha kanal qo'shilmagan.", show_alert: true });
     return;
   }
-  await ctx.answerCallbackQuery({ text: "Ro'yxat ochildi." });
+  await ctx.answerCallbackQuery();
 
   const label: Record<ChannelType, string> = {
-    PUBLIC: "Ommaviy", PRIVATE: "Maxfiy", REQUEST: "So'rovli",
+    PUBLIC: "Ommaviy", PRIVATE: "Maxfiy", REQUEST: "So'rovli", INSTAGRAM: "Instagram",
   };
   const lines = channels.map((c, i) => {
     const handle = c.username ? `@${c.username}` : c.inviteLink ?? "(havola yo'q)";
-    return `<b>${i + 1}.</b> ${label[c.type]} - <b>${e.escapeHtml(c.title)}</b>\n<code>${e.escapeHtml(handle)}</code> ${c.isActive ? "faol" : "nofaol"}`;
+    const btnLbl = c.buttonLabel ? ` | Yorliq: "${c.buttonLabel}"` : "";
+    return `<b>${i + 1}.</b> ${label[c.type]} — <b>${e.escapeHtml(c.title)}</b>\n` +
+           `<code>${e.escapeHtml(handle)}</code> ${c.isActive ? "✅" : "❌"}${btnLbl}`;
   });
+
+  // Har bir kanal uchun yorliq tahrirlash tugmasi
+  const rows = channels.map((c) => [
+    ibtn(`✏️ ${c.title}`, `ch:editlabel:${c.id}`, "primary"),
+  ]);
+  rows.push([ibtn("Orqaga", "ch:menu", undefined, BE.backMenu)]);
+
   await ctx.editMessageText(
     `${ce("list")} <b>Kanallar ro'yxati:</b>\n\n${lines.join("\n\n")}`,
-    { reply_markup: kb([ibtn("Orqaga", "ch:menu", undefined, BE.backMenu)]) }
+    { reply_markup: kb(...rows) }
   ).catch(async () => {
     await ctx.reply(`${ce("list")} <b>Kanallar ro'yxati:</b>\n\n${lines.join("\n\n")}`);
   });
 });
 
+// ============ KANAL YORLIG'INI TAHRIRLASH ============
+channelsHandler.callbackQuery(/^ch:editlabel:(\d+)$/, async (ctx) => {
+  const id = Number(ctx.match[1]);
+  const ch = await prisma.channel.findUnique({ where: { id } });
+  if (!ch) { await ctx.answerCallbackQuery({ text: "Topilmadi.", show_alert: true }); return; }
+  await ctx.answerCallbackQuery();
+  ctx.session.scratch = { editChannelLabel: id };
+  await ctx.reply(
+    `<b>${e.escapeHtml(ch.title)}</b> uchun obuna sahifasidagi yorliqni yuboring.\n\n` +
+    `Hozirgi: <b>${ch.buttonLabel ?? "(standart)"}</b>\n\n` +
+    `Masalan: <code>📢 Asosiy kanal</code>\n` +
+    `Standartga qaytarish uchun: <code>-</code>`,
+    { reply_markup: kb([ibtn("Bekor qilish", "ch:menu", "danger")]) }
+  );
+});
+
+// ============ KNOPKA SOZLAMALARI ============
+channelsHandler.callbackQuery("ch:btnsettings", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await renderBtnSettings(ctx);
+});
+
+async function renderBtnSettings(ctx: MyContext, edit = true) {
+  const btnText  = await getSetting(KEYS.subCheckBtnText,  "✅ Tekshirish");
+  const btnStyle = await getSetting(KEYS.subCheckBtnStyle, "success");
+
+  const text =
+    `🎨 <b>Obuna knopkalari sozlamasi</b>\n\n` +
+    `"Tekshirish" knopkasi:\n` +
+    `Matn: <b>${e.escapeHtml(btnText)}</b>\n` +
+    `Rang: <b>${btnStyle}</b>\n\n` +
+    `<i>Bu knopka foydalanuvchiga obuna so'ralganda ko'rinadi.</i>`;
+
+  const reply_markup = kb(
+    [
+      ibtn("✏️ Matnni o'zgartirish", "ch:subbtntext",  "primary", BE.editName),
+    ],
+    [
+      ibtn("Ko'k",   "ch:subbtnsty:primary", "primary"),
+      ibtn("Yashil", "ch:subbtnsty:success", "success"),
+      ibtn("Qizil",  "ch:subbtnsty:danger",  "danger"),
+      ibtn("Random", "ch:subbtnsty:random",  "success"),
+    ],
+    [
+      ibtn("🔄 Standartga qaytarish", "ch:subbtnreset", "danger"),
+    ],
+    [ibtn("Orqaga", "ch:menu", undefined, BE.backMenu)],
+  );
+
+  if (edit) {
+    await ctx.editMessageText(text, { reply_markup }).catch(() => {});
+  } else {
+    await ctx.reply(text, { reply_markup });
+  }
+}
+
+channelsHandler.callbackQuery("ch:subbtntext", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), editSubBtnText: true };
+  await ctx.reply('Yangi "Tekshirish" knopkasi matnini yuboring:\n\nMasalan: <code>✅ A\'zo bo\'ldim</code>');
+});
+
+channelsHandler.callbackQuery(/^ch:subbtnsty:(primary|success|danger|random)$/, async (ctx) => {
+  const style = resolveButtonStyle(ctx.match[1]);
+  await setSetting(KEYS.subCheckBtnStyle, style);
+  await ctx.answerCallbackQuery({ text: `Rang: ${style}` });
+  await renderBtnSettings(ctx);
+});
+
+channelsHandler.callbackQuery("ch:subbtnreset", async (ctx) => {
+  await Promise.all([
+    setSetting(KEYS.subCheckBtnText,  "✅ Tekshirish"),
+    setSetting(KEYS.subCheckBtnStyle, "success"),
+  ]);
+  await ctx.answerCallbackQuery({ text: "Standartga qaytarildi." });
+  await renderBtnSettings(ctx);
+});
+
+// ============ SO'ROVLAR STATISTIKASI (redirect) ============
+channelsHandler.callbackQuery("ch:jrstats", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await ctx.editMessageText(
+    "📊 <b>So'rovlar statistikasi</b>\n\nYuklanyapti...",
+    { reply_markup: kb([ibtn("Orqaga", "ch:menu", undefined, BE.backMenu)]) }
+  ).catch(() => {});
+  // joinStatsHandler shu callbackni o'zi qayta ko'taradi
+  await ctx.callbackQuery?.message; // trigger for joinStats handler below
+});
+
 // ============ QO'SHISH — TUR TANLASH ============
 channelsHandler.callbackQuery("ch:add", async (ctx) => {
   await ctx.answerCallbackQuery();
-  const text =
+  await ctx.editMessageText(
     `<b>Qaysi turdagi kanal/guruh qo'shasiz?</b>\n\n` +
-    `<b>Ommaviy</b> — username bor (@kanal). Forward yoki @username bilan ham qo'shish mumkin.\n` +
-    `<b>Maxfiy</b> — havola orqali to'g'ridan-to'g'ri qo'shiladi.\n` +
-    `<b>So'rovli</b> — so'rov yuboriladi, admin tasdiqlaydi. Taklif havolasi kerak.`;
-
-  await ctx.editMessageText(text, {
-    reply_markup: kb(
-      [ibtn("Ommaviy (username bor)",   "ch:type:PUBLIC",  "primary", BE.chList)],
-      [ibtn("Maxfiy (havola orqali)",   "ch:type:PRIVATE", "success", BE.chAdd)],
-      [ibtn("So'rovli (apply to join)", "ch:type:REQUEST", "danger",  BE.subOn)],
-      [ibtn("Orqaga", "ch:menu", undefined, BE.backMenu)],
-    ),
-  }).catch(() => {});
+    `<b>Ommaviy</b> — @username bor. Forward yoki @username bilan ham qo'shish mumkin.\n` +
+    `<b>Maxfiy</b> — havola orqali qo'shiladi.\n` +
+    `<b>So'rovli</b> — so'rov yuboriladi, taklif havolasi kerak.\n` +
+    `<b>Instagram</b> — Instagram profil havolasini yuboring.`,
+    {
+      reply_markup: kb(
+        [ibtn("Ommaviy",   "ch:type:PUBLIC",    "primary", BE.chList)],
+        [ibtn("Maxfiy",    "ch:type:PRIVATE",   "success", BE.chAdd)],
+        [ibtn("So'rovli",  "ch:type:REQUEST",   "danger",  BE.subOn)],
+        [ibtn("📸 Instagram", "ch:type:INSTAGRAM", "primary")],
+        [ibtn("Orqaga",    "ch:menu",           undefined, BE.backMenu)],
+      ),
+    }
+  ).catch(() => {});
 });
 
-channelsHandler.callbackQuery(/^ch:type:(PUBLIC|PRIVATE|REQUEST)$/, async (ctx) => {
+channelsHandler.callbackQuery(/^ch:type:(PUBLIC|PRIVATE|REQUEST|INSTAGRAM)$/, async (ctx) => {
   const type = ctx.match[1] as ChannelType;
   await ctx.answerCallbackQuery();
   ctx.session.scratch = { addChannelType: type };
 
+  // Instagram alohida oqim — requestChat kerak emas
+  if (type === "INSTAGRAM") {
+    await ctx.reply(
+      `📸 <b>Instagram profil qo'shish</b>\n\n` +
+      `Instagram profil havolasini yuboring.\n` +
+      `Masalan: <code>https://instagram.com/username</code>`,
+      {
+        reply_markup: new Keyboard().text("❌ Bekor qilish").resized().oneTime(),
+      }
+    );
+    return;
+  }
+
   const requirePublic = type === "PUBLIC";
   const typeName = type === "PUBLIC" ? "Ommaviy" : type === "PRIVATE" ? "Maxfiy" : "So'rovli";
 
-  // user_administrator_rights va bot_administrator_rights yo'q —
-  // foydalanuvchi admin/ega bo'lgan BARCHA kanallar ko'rinadi
+  // bot_administrator_rights — Telegram avtomatik admin qilishni so'raydi
   const rkb = new Keyboard()
     .requestChat("📢 Kanalni tanlash", REQ_CHANNEL, {
       chat_is_channel: true,
       chat_has_username: requirePublic ? true : undefined,
+      bot_administrator_rights: BOT_RIGHTS,
       request_title: true, request_username: true,
     })
     .row()
     .requestChat("👥 Guruhni tanlash", REQ_GROUP, {
       chat_is_channel: false,
       chat_has_username: requirePublic ? true : undefined,
+      bot_administrator_rights: BOT_RIGHTS,
       request_title: true, request_username: true,
     })
     .row()
@@ -154,12 +280,14 @@ channelsHandler.callbackQuery(/^ch:type:(PUBLIC|PRIVATE|REQUEST)$/, async (ctx) 
 
   await ctx.reply(
     `<b>${typeName} qo'shish</b>\n\n` +
-    `Tugma orqali kanal/guruhni tanlang yoki ega/admin bo'lgan kanalingizni tanlang.${extra}`,
+    `Tugma orqali kanal/guruhni tanlang.\n` +
+    `Faqat <b>siz admin yoki ega</b> bo'lgan joylar ko'rinadi.\n` +
+    `Tanlaganingizda bot avtomatik <b>admin</b> qilib qo'shiladi.${extra}`,
     { reply_markup: rkb }
   );
 });
 
-// ============ SO'ROVLI UCHUN AVTOMATIK INVITE ============
+// ============ SO'ROVLI — AVTOMATIK INVITE ============
 channelsHandler.callbackQuery("ch:autoinvite", async (ctx) => {
   await ctx.answerCallbackQuery();
   const pending = ctx.session.scratch?.pendingRequestChannel as PendingChannel | undefined;
@@ -169,7 +297,6 @@ channelsHandler.callbackQuery("ch:autoinvite", async (ctx) => {
     await ctx.reply(text, { reply_markup: markup });
     return;
   }
-
   try {
     const link = await ctx.api.createChatInviteLink(pending.chatId, {
       name: "Kino bot majburiy obuna",
@@ -189,12 +316,48 @@ channelsHandler.callbackQuery("ch:cancelinvite", async (ctx) => {
 
 // ============ BARCHA XABARLARNI USHLAB OLISH ============
 channelsHandler.on("message", async (ctx, next) => {
-  const hasPending  = !!ctx.session.scratch?.pendingRequestChannel;
-  const hasAddType  = !!ctx.session.scratch?.addChannelType;
+  const hasPending    = !!ctx.session.scratch?.pendingRequestChannel;
+  const hasAddType    = !!ctx.session.scratch?.addChannelType;
+  const editLabelId   = ctx.session.scratch?.editChannelLabel as number | undefined;
+  const editSubBtn    = !!ctx.session.scratch?.editSubBtnText;
+
+  // Kanal yorlig'ini tahrirlash
+  if (editLabelId) {
+    if (ctx.message?.chat_shared) return next();
+    const msgText = ctx.message?.text?.trim();
+    if (!msgText) return next();
+    if (msgText === "❌ Bekor qilish" || msgText === "/cancel") {
+      ctx.session.scratch = {};
+      await ctx.reply("❌ Bekor qilindi.");
+      return;
+    }
+    const newLabel = msgText === "-" ? null : msgText.slice(0, 64);
+    await prisma.channel.update({ where: { id: editLabelId }, data: { buttonLabel: newLabel } }).catch(() => null);
+    ctx.session.scratch = {};
+    await ctx.reply(`${ce("check")} Yorliq saqlandi: <b>${newLabel ?? "(standart)"}</b>`);
+    return;
+  }
+
+  // Sub check button matnini tahrirlash
+  if (editSubBtn) {
+    if (ctx.message?.chat_shared) return next();
+    const msgText = ctx.message?.text?.trim();
+    if (!msgText) return next();
+    if (msgText === "❌ Bekor qilish" || msgText === "/cancel") {
+      if (ctx.session.scratch) delete ctx.session.scratch.editSubBtnText;
+      await ctx.reply("❌ Bekor qilindi.");
+      return;
+    }
+    await setSetting(KEYS.subCheckBtnText, msgText.slice(0, 32));
+    if (ctx.session.scratch) delete ctx.session.scratch.editSubBtnText;
+    await ctx.reply(`${ce("check")} Knopka matni saqlandi: <b>${e.escapeHtml(msgText.slice(0, 32))}</b>`);
+    await renderBtnSettings(ctx, false);
+    return;
+  }
 
   if (!hasPending && !hasAddType) return next();
 
-  // chat_shared — o'z handleriga o'tadi
+  // chat_shared — o'z handleriga
   if (ctx.message?.chat_shared) return next();
 
   const msgText = ctx.message?.text?.trim();
@@ -208,62 +371,72 @@ channelsHandler.on("message", async (ctx, next) => {
     return;
   }
 
-  // --- SO'ROVLI KANAL uchun invite link kutilmoqda ---
+  // --- SO'ROVLI KANAL uchun invite link ---
   if (hasPending) {
     if (!msgText) { await ctx.reply("❌ Matn yuboring."); return; }
-
     if (!msgText.startsWith("https://t.me/+") && !msgText.startsWith("https://t.me/joinchat/")) {
       await ctx.reply(
-        "❌ Bu to'g'ri join-request havolasi emas.\n\n" +
+        "❌ To'g'ri join-request havolasi emas.\n\n" +
         "<code>https://t.me/+</code> yoki <code>https://t.me/joinchat/</code> bilan boshlanishi kerak."
       );
       return;
     }
-
     const pending = ctx.session.scratch!.pendingRequestChannel as PendingChannel;
     await finishAddChannel(ctx, { ...pending, inviteLink: msgText });
     return;
   }
 
-  // --- KANAL TANLASH bosqichida ---
   const type = ctx.session.scratch!.addChannelType as ChannelType;
+
+  // Instagram URL
+  if (type === "INSTAGRAM") {
+    if (!msgText) { await ctx.reply("❌ Havola yuboring."); return; }
+    if (!msgText.includes("instagram.com/") && !msgText.includes("instagr.am/")) {
+      await ctx.reply("❌ Bu Instagram havolasi emas.\n\nMasalan: <code>https://instagram.com/username</code>");
+      return;
+    }
+    const urlMatch = msgText.match(/https?:\/\/(www\.)?(instagram\.com|instagr\.am)\/[^\s]+/);
+    const url = urlMatch?.[0] ?? msgText;
+    const username = url.replace(/https?:\/\/(www\.)?instagram\.com\//, "").replace(/\/$/, "").split("/")[0];
+    ctx.session.scratch = {};
+    await finishAddChannel(ctx, {
+      chatId: -(Date.now() % 1000000000), // unikal salbiy ID
+      title: username ? `Instagram: @${username}` : "Instagram",
+      username: null,
+      type: "INSTAGRAM",
+      inviteLink: url,
+    });
+    return;
+  }
 
   // Forward from channel
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const origin = (ctx.message as any)?.forward_origin;
   if (origin?.type === "channel") {
     await processChannelInfo(ctx, {
-      chatId:   origin.chat.id,
-      title:    origin.chat.title ?? "Noma'lum",
+      chatId: origin.chat.id,
+      title: origin.chat.title ?? "Noma'lum",
       username: origin.chat.username ?? null,
       type,
     });
     return;
   }
 
-  // @username yoki https://t.me/username (faqat PUBLIC uchun)
+  // @username yoki https://t.me/ (faqat PUBLIC)
   if (type === "PUBLIC" && msgText && (msgText.startsWith("@") || msgText.includes("t.me/"))) {
     let target: string | null = null;
     if (msgText.startsWith("@")) {
       target = msgText;
     } else {
-      // https://t.me/username yoki https://t.me/username/123
       const m = msgText.match(/t\.me\/([^/?+\s]+)/);
-      if (m && !m[1].startsWith("+") && m[1] !== "joinchat") {
-        target = "@" + m[1];
-      }
+      if (m && !m[1].startsWith("+") && m[1] !== "joinchat") target = "@" + m[1];
     }
-
-    if (!target) {
-      await ctx.reply("❌ Username yoki havola noto'g'ri.");
-      return;
-    }
-
+    if (!target) { await ctx.reply("❌ Havola noto'g'ri."); return; }
     try {
       const chat = await ctx.api.getChat(target);
       await processChannelInfo(ctx, {
-        chatId:   chat.id,
-        title:    (chat as { title?: string }).title ?? "Noma'lum",
+        chatId: chat.id,
+        title: (chat as { title?: string }).title ?? "Noma'lum",
         username: (chat as { username?: string }).username ?? null,
         type,
       });
@@ -276,25 +449,24 @@ channelsHandler.on("message", async (ctx, next) => {
   return next();
 });
 
-// ============ CHAT TANLANDI (requestChat orqali) ============
+// ============ CHAT TANLANDI (requestChat) ============
 channelsHandler.on("message:chat_shared", async (ctx) => {
   const shared = ctx.message.chat_shared;
   const type   = (ctx.session.scratch?.addChannelType as ChannelType) ?? "PUBLIC";
   ctx.session.scratch = {};
 
-  const chatId = shared.chat_id;
-  const chat   = await ctx.api.getChat(chatId).catch(() => null);
+  const chatId   = shared.chat_id;
+  const chat     = await ctx.api.getChat(chatId).catch(() => null);
   const title    = shared.title ?? (chat && "title" in chat ? chat.title : undefined) ?? "Noma'lum";
   const username = shared.username ?? (chat && "username" in chat ? chat.username : undefined) ?? null;
 
   await processChannelInfo(ctx, { chatId, title, username, type });
 });
 
-// ============ KANAL MA'LUMOTLARINI TEKSHIRISH VA SAQLASH ============
+// ============ KANAL TEKSHIRISH VA SAQLASH ============
 async function processChannelInfo(ctx: MyContext, info: PendingChannel) {
   const { chatId, title, username, type } = info;
 
-  // Bot admin ekanligini tekshirish
   const botMember = await ctx.api.getChatMember(chatId, ctx.me.id).catch(() => null);
   if (!botMember || !["administrator", "creator"].includes(botMember.status)) {
     await ctx.reply(
@@ -307,11 +479,9 @@ async function processChannelInfo(ctx: MyContext, info: PendingChannel) {
     return;
   }
 
-  // Ommaviy: username majburiy
   if (type === "PUBLIC" && !username) {
     await ctx.reply(
-      `❌ Ommaviy kanal uchun <b>username</b> bo'lishi kerak.\n\n` +
-      `Bu kanal maxfiy ko'rinadi — Maxfiy yoki So'rovli turini tanlang.`,
+      `❌ Ommaviy kanal uchun <b>username</b> bo'lishi kerak.`,
       { reply_markup: { remove_keyboard: true } }
     );
     const { text, markup } = await channelMenuData();
@@ -319,24 +489,24 @@ async function processChannelInfo(ctx: MyContext, info: PendingChannel) {
     return;
   }
 
-  // So'rovli: invite link so'rash yoki avtomatik yaratish
   if (type === "REQUEST") {
     ctx.session.scratch = { pendingRequestChannel: info };
     await ctx.reply(
       `✅ Kanal aniqlandi: <b>${e.escapeHtml(title)}</b>\n\n` +
       `So'rovli kanal uchun <b>join-request havolasi</b> kerak.\n\n` +
-      `Havolani yuboring (https://t.me/+ ...) yoki avtomatik yarating:`,
+      `ℹ️ Bu havola <b>"Apply to join"</b> (qo'shilish so'rovi) turidagi havola bo'lishi kerak.\n` +
+      `Telegram'da kanal Sozlamalari → Invite Links → <b>"Request Admin Approval"</b> yoqilgan havola yarating va shu yerga yuboring.\n\n` +
+      `Yoki pastdagi tugma orqali bot o'zi yaratsin.`,
       {
         reply_markup: kb(
-          [ibtn("🔗 Avtomatik yaratish", "ch:autoinvite", "success", BE.chAdd)],
-          [ibtn("❌ Bekor qilish",        "ch:cancelinvite", "danger", BE.backMenu)],
+          [ibtn("🔗 Avtomatik yaratish", "ch:autoinvite",   "success", BE.chAdd)],
+          [ibtn("❌ Bekor qilish",        "ch:cancelinvite", "danger",  BE.backMenu)],
         ),
       }
     );
     return;
   }
 
-  // Maxfiy: invite link avtomatik yaratish
   let inviteLink: string | null = null;
   if (!username) {
     try {
@@ -346,10 +516,9 @@ async function processChannelInfo(ctx: MyContext, info: PendingChannel) {
       });
       inviteLink = link.invite_link;
     } catch (err) {
-      await ctx.reply(
-        `❌ Havola yaratib bo'lmadi: ${(err as Error).message}`,
-        { reply_markup: { remove_keyboard: true } }
-      );
+      await ctx.reply(`❌ Havola yaratib bo'lmadi: ${(err as Error).message}`, {
+        reply_markup: { remove_keyboard: true },
+      });
       const { text, markup } = await channelMenuData();
       await ctx.reply(text, { reply_markup: markup });
       return;
@@ -366,11 +535,26 @@ async function finishAddChannel(
   ctx.session.scratch = {};
   const { chatId, title, username, type, inviteLink } = info;
 
+  // Instagram uchun unikal chatId generatsiya qilish (agar conflict bo'lsa)
+  let finalChatId = BigInt(chatId);
+  if (type === "INSTAGRAM") {
+    const existing = await prisma.channel.findFirst({ where: { type: "INSTAGRAM", inviteLink } });
+    if (existing) {
+      await ctx.reply(`ℹ️ Bu Instagram profil allaqachon qo'shilgan: <b>${e.escapeHtml(existing.title)}</b>`, {
+        reply_markup: { remove_keyboard: true },
+      });
+      const { text, markup } = await channelMenuData();
+      await ctx.reply(text, { reply_markup: markup });
+      return;
+    }
+    finalChatId = BigInt(-Date.now());
+  }
+
   try {
     await prisma.channel.upsert({
-      where:  { chatId: BigInt(chatId) },
+      where:  { chatId: finalChatId },
       create: {
-        chatId: BigInt(chatId), title, username, inviteLink, type,
+        chatId: finalChatId, title, username, inviteLink, type,
         sortOrder: (await prisma.channel.count()) + 1,
       },
       update: { title, username, inviteLink, type, isActive: true },
@@ -383,10 +567,10 @@ async function finishAddChannel(
   }
 
   await ctx.reply(
-    `${ce("check")} <b>Qo'shildi!</b>\n\n` +
-    `<b>${e.escapeHtml(title)}</b>\n<code>${chatId}</code>\n` +
-    (username ? `@${e.escapeHtml(username)}\n` : inviteLink ? `${e.escapeHtml(inviteLink)}\n` : "") +
-    `Tur: <b>${type}</b>`,
+    `${ce("check")} <b>Qo'shildi!</b>\n\n<b>${e.escapeHtml(title)}</b>\n` +
+    (type === "INSTAGRAM" ? `📸 ${e.escapeHtml(inviteLink ?? "")}` :
+      (username ? `@${e.escapeHtml(username)}` : inviteLink ? e.escapeHtml(inviteLink) : "")) +
+    `\nTur: <b>${type}</b>`,
     { reply_markup: { remove_keyboard: true } }
   );
   const { text, markup } = await channelMenuData();
@@ -400,7 +584,7 @@ channelsHandler.callbackQuery("ch:del", async (ctx) => {
     await ctx.answerCallbackQuery({ text: "O'chirish uchun kanal yo'q.", show_alert: true });
     return;
   }
-  await ctx.answerCallbackQuery({ text: "Kanalni tanlang." });
+  await ctx.answerCallbackQuery();
   const rows = channels.map((c) => [ibtn(c.title, `ch:delconf:${c.id}`, "danger", BE.chDelete)]);
   rows.push([ibtn("Orqaga", "ch:menu", undefined, BE.backMenu)]);
   await ctx.editMessageText(`<b>Qaysi kanalni o'chirasiz?</b>`, { reply_markup: kb(...rows) });

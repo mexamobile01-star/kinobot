@@ -1,8 +1,8 @@
 import { Composer } from "grammy";
-import { isAdmin } from "../config.js";
+import { isAdmin, isOwner } from "../config.js";
 import { ce } from "../utils/emoji.js";
 import { adminMenuKeyboard, userMenuKeyboard } from "../utils/keyboard.js";
-import { ensureSubscribed } from "../utils/subscription.js";
+import { ensureSubscribed, getUnsubscribedChannels } from "../utils/subscription.js";
 import { getBool, KEYS } from "../utils/settings.js";
 import type { MyContext } from "../types.js";
 
@@ -15,7 +15,7 @@ startHandler.command("start", async (ctx) => {
     await ctx.reply(
       `${ce("settings")} <b>Admin panelga xush kelibsiz!</b>\n\n` +
         `Quyidagi tugmalar orqali botni boshqaring.`,
-      { reply_markup: adminMenuKeyboard() }
+      { reply_markup: adminMenuKeyboard(isOwner(uid)) }
     );
     return;
   }
@@ -60,10 +60,12 @@ startHandler.hears("🔎 Kino qidirish", async (ctx) => {
   );
 });
 
-// Obuna tekshirish tugmasi
+// Obuna tekshirish tugmasi — yangi xabar YUBORILMAYDI, faqat popup
 startHandler.callbackQuery("sub:check", async (ctx) => {
-  const ok = await ensureSubscribed(ctx, ctx.from.id);
-  if (ok) {
+  const notJoined = await getUnsubscribedChannels(ctx, ctx.from.id);
+  const blocking  = notJoined.filter((c) => c.type !== "INSTAGRAM");
+
+  if (blocking.length === 0) {
     await ctx.answerCallbackQuery({ text: "✅ Rahmat! Endi foydalanishingiz mumkin." });
     await ctx.deleteMessage().catch(() => {});
     await ctx.reply(
@@ -71,8 +73,9 @@ startHandler.callbackQuery("sub:check", async (ctx) => {
       { reply_markup: userMenuKeyboard() }
     );
   } else {
+    const names = blocking.slice(0, 3).map((c) => c.title).join(", ");
     await ctx.answerCallbackQuery({
-      text: "❌ Hali hamma kanalga a'zo bo'lmadingiz!",
+      text: `❌ Hali ${blocking.length} ta kanalga a'zo bo'lmadingiz!\n${names}`,
       show_alert: true,
     });
   }
