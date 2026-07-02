@@ -17,9 +17,6 @@ const WELCOME =
   `Yoki kino <b>nomini</b> yozib qidiring.\n\n` +
   `<tg-emoji emoji-id="5429571366384842791">🔎</tg-emoji> Masalan: <code>123</code>`;
 
-// Reply keyboardni ko'rsatish uchun bo'sh (ko'rinmas) matn — admin uchun
-const BLANK = "⠀";
-
 async function deliverMovieByCode(ctx: MyContext, code: number): Promise<boolean> {
   const movie = await prisma.movie.findUnique({ where: { code } });
   if (!movie) return false;
@@ -41,9 +38,11 @@ startHandler.command("start", async (ctx) => {
     if (Number.isInteger(refId)) await attachReferrer(uid, refId);
   }
 
-  // Admin — xabarsiz, faqat knopkalar
+  // Admin — qisqa xabar + knopkalar
   if (isAdmin(uid)) {
-    await ctx.reply(BLANK, { reply_markup: adminMenuKeyboard(isOwner(uid)) });
+    await ctx.reply("<b>Admin panel</b>", {
+      reply_markup: adminMenuKeyboard(isOwner(uid)),
+    });
     return;
   }
 

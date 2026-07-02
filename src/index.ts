@@ -98,15 +98,10 @@ async function main() {
     { command: "start", description: "Botni ishga tushirish" },
   ]);
 
+  // Eski owner uchun ro'yxatga olingan /admin komandasini o'chirish
   for (const id of config.ownerIds) {
     await bot.api
-      .setMyCommands(
-        [
-          { command: "start", description: "Bosh menyu" },
-          { command: "admin", description: "Admin panel" },
-        ],
-        { scope: { type: "chat", chat_id: Number(id) } }
-      )
+      .deleteMyCommands({ scope: { type: "chat", chat_id: Number(id) } })
       .catch(() => {});
   }
 
