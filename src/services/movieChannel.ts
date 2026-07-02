@@ -44,14 +44,16 @@ export function movieWatchButton(botUsername: string, code: number) {
 
 /**
  * Qisqa videoni kino kanalga tashlaydi.
- * shortMsgId qaytaradi (yoki null).
+ * { msgId } yoki { error } qaytaradi.
  */
 export async function postToMovieChannel(
   ctx: MyContext,
   movie: Movie,
   shortFileId: string
-): Promise<number | null> {
-  if (!config.movieChannelId) return null;
+): Promise<{ msgId: number | null; error: string | null }> {
+  if (!config.movieChannelId) {
+    return { msgId: null, error: "MOVIE_CHANNEL_ID sozlanmagan (.env)" };
+  }
   const btn = movieWatchButton(ctx.me.username, movie.code);
   try {
     const sent = await ctx.api.sendVideo(config.movieChannelId, shortFileId, {
@@ -60,8 +62,8 @@ export async function postToMovieChannel(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       reply_markup: { inline_keyboard: [[btn]] } as any,
     });
-    return sent.message_id;
-  } catch {
-    return null;
+    return { msgId: sent.message_id, error: null };
+  } catch (err) {
+    return { msgId: null, error: (err as Error).message };
   }
 }

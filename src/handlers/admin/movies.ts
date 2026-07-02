@@ -125,15 +125,19 @@ export async function addMovie(conversation: Conversation<MyContext>, ctx: MyCon
   );
 
   // Qisqa videoni kino kanalga tashlash
-  let shortPosted = false;
+  let shortStatus: string;
   if (shortFileId) {
-    const shortMsgId = await postToMovieChannel(ctx, movie, shortFileId);
-    if (shortMsgId) {
-      shortPosted = true;
+    const { msgId, error } = await postToMovieChannel(ctx, movie, shortFileId);
+    if (msgId) {
       await conversation.external(() =>
-        prisma.movie.update({ where: { id: movie.id }, data: { shortMsgId } })
+        prisma.movie.update({ where: { id: movie.id }, data: { shortMsgId: msgId } })
       );
+      shortStatus = `📹 Qisqa video kino kanalga tashlandi.`;
+    } else {
+      shortStatus = `⚠️ Qisqa video tashlanmadi:\n<code>${e.escapeHtml(error ?? "noma'lum xato")}</code>`;
     }
+  } else {
+    shortStatus = `ℹ️ Qisqa video o'tkazib yuborildi.`;
   }
 
   await ctx.reply(
@@ -141,9 +145,7 @@ export async function addMovie(conversation: Conversation<MyContext>, ctx: MyCon
     `🎬 ${e.escapeHtml(movie.title)}\n` +
     `${ce("star")} Kod: <code>${movie.code}</code>\n` +
     (baseMsgId ? `📦 Baza kanalga tashlandi.\n` : `ℹ️ Baza kanal sozlanmagan.\n`) +
-    (shortPosted ? `📹 Qisqa video kino kanalga tashlandi.` :
-      shortFileId ? `⚠️ Qisqa video tashlanmadi (kanal sozlamasini tekshiring).` :
-      `ℹ️ Qisqa video o'tkazib yuborildi.`),
+    shortStatus,
     { reply_markup: adminMenuKeyboard(owner) }
   );
 }
