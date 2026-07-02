@@ -13,15 +13,18 @@ datasource db {
 
 // ===================== FOYDALANUVCHILAR =====================
 model User {
-  id        BigInt   @id
-  firstName String?
-  username  String?
-  region    String?
-  isBlocked Boolean  @default(false)
-  isAdmin   Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                BigInt   @id
+  firstName         String?
+  username          String?
+  region            String?
+  referredById      BigInt?  // kim taklif qilgan
+  referralConfirmed Boolean  @default(false) // obunadan keyin tasdiqlanadi
+  isBlocked         Boolean  @default(false)
+  isAdmin           Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
+  @@index([referredById])
   @@map("users")
 }
 
@@ -133,6 +136,8 @@ model Movie {
   quality     String?
   language    String?
   duration    Int?     // sekundlarda
+  shortFileId String?  // qisqa (treyler) video file_id
+  shortMsgId  Int?     // kino kanaldagi qisqa video xabar id
   buttonText  String?
   buttonUrl   String?
   buttonStyle String   @default("primary")

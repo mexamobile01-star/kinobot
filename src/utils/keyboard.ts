@@ -44,6 +44,7 @@ export const ADMIN_MENU_BUTTONS = {
   serials: "Serial boshqaruvi",
   broadcast: "Xabar yuborish",
   funnel: "Funnel",
+  referrals: "Referal",
   admins: "Admin boshqaruvi",
   backup: "Backup",
 } as const;
@@ -89,6 +90,7 @@ export function adminMenuKeyboard(owner = false): Keyboard {
       .text(ADMIN_MENU_BUTTONS.broadcast, { icon_custom_emoji_id: BE.broadcast })
       .text(ADMIN_MENU_BUTTONS.funnel, { icon_custom_emoji_id: BE.trend });
     kb.row()
+      .text(ADMIN_MENU_BUTTONS.referrals, { icon_custom_emoji_id: BE.users })
       .text(ADMIN_MENU_TEXT, { icon_custom_emoji_id: BE.admin });
   }
 
@@ -101,6 +103,7 @@ export function adminMenuKeyboard(owner = false): Keyboard {
 export function userMenuKeyboard(): Keyboard {
   return new Keyboard()
     .text("Kino qidirish", { icon_custom_emoji_id: "5429571366384842791" })
+    .text("Referal / pul ishlash")
     .resized();
 }
 

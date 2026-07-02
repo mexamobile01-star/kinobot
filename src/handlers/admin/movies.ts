@@ -6,6 +6,7 @@ import { ce, e } from "../../utils/emoji.js";
 import { ADMIN_MENU_BUTTONS, ibtn, BE, kb, cancelKeyboard, adminMenuKeyboard } from "../../utils/keyboard.js";
 import { isValidUrl, resolveButtonStyle } from "../../utils/contentButton.js";
 import { getSetting, setSetting, getGlobalButton, getBool, setBool, KEYS } from "../../utils/settings.js";
+import { postToMovieChannel } from "../../services/movieChannel.js";
 import type { MyContext } from "../../types.js";
 
 export const moviesHandler = new Composer<MyContext>();
@@ -82,11 +83,28 @@ export async function addMovie(conversation: Conversation<MyContext>, ctx: MyCon
     return titleCtx.reply("❌ Bekor qilindi.", { reply_markup: adminMenuKeyboard(owner) });
   const title = titleCtx.message?.text?.trim() || "Nomsiz";
 
-  await ctx.reply("4️⃣ Tavsif (yili, janr, til) — ixtiyoriy. Kerak bo'lmasa <code>-</code>.");
-  const capCtx = await conversation.wait();
-  if (isCancel(capCtx.message?.text))
-    return capCtx.reply("❌ Bekor qilindi.", { reply_markup: adminMenuKeyboard(owner) });
-  const cap = capCtx.message?.text?.trim() ?? "-";
+  await ctx.reply("4️⃣ Kino <b>janrini</b> kiriting. Masalan: <code>Jangari, Drama</code>");
+  const genreCtx = await conversation.wait();
+  if (isCancel(genreCtx.message?.text))
+    return genreCtx.reply("❌ Bekor qilindi.", { reply_markup: adminMenuKeyboard(owner) });
+  const genre = genreCtx.message?.text?.trim() || null;
+
+  // 5️⃣ Qisqa (treyler) video — o'tkazib yuborish mumkin
+  await ctx.reply(
+    "5️⃣ Endi <b>qisqa (treyler) videosini</b> yuboring.\n\n" +
+    "Bu video ommaviy kino kanaliga tashlanadi.\n" +
+    "O'tkazib yuborish uchun <code>-</code> yozing.",
+    { reply_markup: cancelKeyboard() }
+  );
+  let shortFileId: string | null = null;
+  while (true) {
+    const sc = await conversation.wait();
+    if (isCancel(sc.message?.text))
+      return sc.reply("❌ Bekor qilindi.", { reply_markup: adminMenuKeyboard(owner) });
+    if (sc.message?.text?.trim() === "-") { shortFileId = null; break; }
+    if (sc.message?.video) { shortFileId = sc.message.video.file_id; break; }
+    await sc.reply("❌ Video yuboring yoki o'tkazib yuborish uchun <code>-</code> yozing.");
+  }
 
   let baseMsgId: number | null = null;
   if (config.baseChannelId) {
@@ -102,15 +120,30 @@ export async function addMovie(conversation: Conversation<MyContext>, ctx: MyCon
 
   const movie = await conversation.external(() =>
     prisma.movie.create({
-      data: { code, title, caption: cap === "-" ? null : cap, fileId, baseMsgId, duration },
+      data: { code, title, genre, fileId, baseMsgId, duration, shortFileId },
     })
   );
+
+  // Qisqa videoni kino kanalga tashlash
+  let shortPosted = false;
+  if (shortFileId) {
+    const shortMsgId = await postToMovieChannel(ctx, movie, shortFileId);
+    if (shortMsgId) {
+      shortPosted = true;
+      await conversation.external(() =>
+        prisma.movie.update({ where: { id: movie.id }, data: { shortMsgId } })
+      );
+    }
+  }
 
   await ctx.reply(
     `${ce("check")} <b>Kino qo'shildi!</b>\n\n` +
     `🎬 ${e.escapeHtml(movie.title)}\n` +
     `${ce("star")} Kod: <code>${movie.code}</code>\n` +
-    (baseMsgId ? `📦 Baza kanalga tashlandi.` : `ℹ️ Baza kanal sozlanmagan.`),
+    (baseMsgId ? `📦 Baza kanalga tashlandi.\n` : `ℹ️ Baza kanal sozlanmagan.\n`) +
+    (shortPosted ? `📹 Qisqa video kino kanalga tashlandi.` :
+      shortFileId ? `⚠️ Qisqa video tashlanmadi (kanal sozlamasini tekshiring).` :
+      `ℹ️ Qisqa video o'tkazib yuborildi.`),
     { reply_markup: adminMenuKeyboard(owner) }
   );
 }

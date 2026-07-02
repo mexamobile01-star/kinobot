@@ -2,7 +2,7 @@ import { Composer, InputFile } from "grammy";
 import { prisma } from "../../prisma.js";
 import { config } from "../../config.js";
 import { ADMIN_MENU_BUTTONS, ibtn, BE, kb } from "../../utils/keyboard.js";
-import { clearSettingsCache } from "../../utils/settings.js";
+import { clearSettingsCache, getBool, setBool, KEYS } from "../../utils/settings.js";
 import type { MyContext } from "../../types.js";
 import type { ChannelType } from "@prisma/client";
 
@@ -12,10 +12,16 @@ export const backupHandler = new Composer<MyContext>();
 const bigintReplacer = (_key: string, value: unknown) =>
   typeof value === "bigint" ? value.toString() : value;
 
-function backupMenuWithBack() {
+async function backupMenuWithBack() {
+  const auto = await getBool(KEYS.autoBackupEnabled, false);
   return kb(
     [ibtn("📥 Backup olish",      "backup:get",     "primary", BE.backup)],
     [ibtn("📤 Backupdan tiklash", "backup:restore", "success", BE.folder)],
+    [ibtn(
+      auto ? "🟢 Avto backup: Yoqilgan (3 kun)" : "🔴 Avto backup: O'chirilgan",
+      "backup:autotoggle",
+      auto ? "success" : "danger"
+    )],
     [ibtn("Menyuga qaytish",      "backup:close",   undefined, BE.backMenu)],
   );
 }
@@ -23,9 +29,20 @@ function backupMenuWithBack() {
 // ============ MENYU ============
 backupHandler.hears(ADMIN_MENU_BUTTONS.backup, async (ctx) => {
   await ctx.reply(
-    `<b>Backup</b>\n\nBarcha ma'lumotlarni eksport qilish yoki tiklash.`,
-    { reply_markup: backupMenuWithBack() }
+    `<b>Backup</b>\n\nBarcha ma'lumotlarni eksport qilish yoki tiklash.\n` +
+    `Avto backup yoqilsa — har 3 kunda avtomatik yuboriladi.`,
+    { reply_markup: await backupMenuWithBack() }
   );
+});
+
+backupHandler.callbackQuery("backup:autotoggle", async (ctx) => {
+  const cur = await getBool(KEYS.autoBackupEnabled, false);
+  await setBool(KEYS.autoBackupEnabled, !cur);
+  await ctx.answerCallbackQuery({
+    text: !cur ? "✅ Avto backup yoqildi (har 3 kunda)" : "❌ Avto backup o'chirildi",
+    show_alert: true,
+  });
+  await ctx.editMessageReplyMarkup({ reply_markup: await backupMenuWithBack() }).catch(() => {});
 });
 
 backupHandler.callbackQuery("backup:close", async (ctx) => {
@@ -74,7 +91,7 @@ backupHandler.callbackQuery("backup:get", async (ctx) => {
         `Seriallar: <b>${serials.length}</b> (${episodes.length} qism)\n` +
         `Kanallar: <b>${channels.length}</b>\n` +
         `Foydalanuvchilar: <b>${users.length}</b>`,
-      reply_markup: backupMenuWithBack(),
+      reply_markup: await backupMenuWithBack(),
     }
   );
 });
@@ -172,12 +189,12 @@ backupHandler.callbackQuery("backup:confirm", async (ctx) => {
       `📺 Seriallar: <b>${result.serials}</b> (<b>${result.episodes}</b> qism)\n` +
       `📢 Kanallar: <b>${result.channels}</b>\n` +
       `👥 Foydalanuvchilar: <b>${result.users}</b>`,
-      { reply_markup: backupMenuWithBack() }
+      { reply_markup: await backupMenuWithBack() }
     ).catch(() => {});
   } catch (err) {
     await ctx.editMessageText(
       `❌ Tiklashda xato: <code>${(err as Error).message}</code>`,
-      { reply_markup: backupMenuWithBack() }
+      { reply_markup: await backupMenuWithBack() }
     ).catch(() => {});
   }
 });
@@ -188,7 +205,7 @@ backupHandler.callbackQuery("backup:cancel", async (ctx) => {
   await ctx.answerCallbackQuery({ text: "Bekor qilindi." });
   await ctx.editMessageText(
     `<tg-emoji emoji-id="${BE.backup}">💾</tg-emoji> <b>Backup</b>\n\nBekor qilindi.`,
-    { reply_markup: backupMenuWithBack() }
+    { reply_markup: await backupMenuWithBack() }
   ).catch(() => {});
 });
 

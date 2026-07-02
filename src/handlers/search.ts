@@ -4,6 +4,7 @@ import { isAdmin } from "../config.js";
 import { ce, e } from "../utils/emoji.js";
 import { sendMovie } from "../services/media.js";
 import { ensureSubscribed } from "../utils/subscription.js";
+import { confirmReferral } from "../utils/referral.js";
 import { getBool, KEYS } from "../utils/settings.js";
 import { sendSerialSeasons } from "./serialView.js";
 import { ADMIN_MENU_BUTTONS } from "../utils/keyboard.js";
@@ -15,6 +16,7 @@ const PANEL_TEXTS = new Set([
   ...Object.values(ADMIN_MENU_BUTTONS),
   "🔄 Yangilash",
   "Kino qidirish",
+  "Referal / pul ishlash",
   "❌ Bekor qilish",
 ]);
 
@@ -66,6 +68,7 @@ searchHandler.on("message:text", async (ctx, next) => {
       const ok = await ensureSubscribed(ctx, uid);
       if (!ok) return;
     }
+    await confirmReferral(ctx, uid);
   }
 
   // Kod bo'yicha

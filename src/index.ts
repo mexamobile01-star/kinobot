@@ -11,6 +11,8 @@ import { startHandler } from "./handlers/start.js";
 import { serialViewHandler } from "./handlers/serialView.js";
 import { searchHandler } from "./handlers/search.js";
 import { inlineHandler } from "./handlers/inline.js";
+import { referralHandler } from "./handlers/referral.js";
+import { startAutoBackup } from "./services/autoBackup.js";
 
 // ===== Middleware: foydalanuvchini bazaga yozish =====
 bot.use(trackUser);
@@ -67,7 +69,8 @@ bot.on("chat_member", async (ctx) => {
 
 // ===== Handler'lar (tartib muhim!) =====
 bot.use(adminHandler);      // admin panel (faqat adminlar)
-bot.use(startHandler);      // /start, /help, obuna tekshiruvi
+bot.use(startHandler);      // /start, obuna tekshiruvi, deep-link
+bot.use(referralHandler);   // referal (foydalanuvchi)
 bot.use(serialViewHandler); // serial sezon/qism navigatsiya callbacklari
 bot.use(inlineHandler);     // inline qidiruv
 bot.use(searchHandler);     // matnli qidiruv (kod/nom) — oxirida
@@ -87,6 +90,9 @@ async function main() {
     select: { id: true },
   });
   for (const admin of dbAdmins) addAdminId(admin.id);
+
+  // Avtomatik backup rejalashtiruvchi
+  startAutoBackup(bot);
 
   await bot.api.setMyCommands([
     { command: "start", description: "Botni ishga tushirish" },

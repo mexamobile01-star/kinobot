@@ -45,6 +45,8 @@ export const KEYS = {
   subChannelBtnLabel: "sub_channel_btn_label",
   movieBtnEnabled:  "movie_btn_enabled",
   serialBtnEnabled: "serial_btn_enabled",
+  autoBackupEnabled: "auto_backup_enabled",
+  lastBackupAt:      "last_backup_at",
 } as const;
 
 export async function getGlobalButton(prefix: "movie" | "serial") {

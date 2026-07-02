@@ -16,6 +16,9 @@ export const config = {
   baseChannelId: process.env.BASE_CHANNEL_ID
     ? Number(process.env.BASE_CHANNEL_ID)
     : null,
+  movieChannelId: process.env.MOVIE_CHANNEL_ID
+    ? Number(process.env.MOVIE_CHANNEL_ID)
+    : null,
   usePremiumEmoji: (process.env.USE_PREMIUM_EMOJI ?? "true") === "true",
 };
 
