@@ -3,42 +3,41 @@ import { e } from "../utils/emoji.js";
 import type { MyContext } from "../types.js";
 import type { Movie } from "@prisma/client";
 
-// Kino kanal posti uchun premium emojilar
+// Premium emoji IDlar (shaxsiy chatda ko'rinadi, kanalda fallback ishlaydi)
 const EM = {
   name:  "5258077307985207053", // 📹
-  genre: "5258318251355545562", // 🙃
+  genre: "5258318251355545562", // 🎭
   time:  "5258419835922030550", // 🕔
-  bot:   "5258093637450866522", // 🤖
 };
 
 function tg(id: string, fallback: string): string {
   return `<tg-emoji emoji-id="${id}">${fallback}</tg-emoji>`;
 }
 
-function formatDuration(secs: number): string {
+/** Davomiylikni "1 soat 25 daqiqa" ko'rinishida qaytaradi */
+export function formatDuration(secs: number): string {
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
-  const s = secs % 60;
-  if (h > 0) return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-  return `${m}:${s.toString().padStart(2, "0")}`;
+  if (h > 0 && m > 0) return `${h} soat ${m} daqiqa`;
+  if (h > 0) return `${h} soat`;
+  return `${m} daqiqa`;
 }
 
-/** Kino kanal posti uchun caption */
+/** Kino caption — shaxsiy chatda premium, kanalda oddiy emoji (fallback) */
 export function movieChannelCaption(m: Movie): string {
   const lines = [
-    `${tg(EM.name, "📹")} nomi : ${e.escapeHtml(m.title)}`,
-    `${tg(EM.genre, "🙃")} janri : ${m.genre ? e.escapeHtml(m.genre) : "—"}`,
-    `${tg(EM.time, "🕔")} vaqti : ${m.duration ? formatDuration(m.duration) : "—"}`,
+    `${tg(EM.name, "📹")} nomi : <b>${e.escapeHtml(m.title)}</b>`,
+    `${tg(EM.genre, "🎭")} janri : <b>${m.genre ? e.escapeHtml(m.genre) : "—"}</b>`,
+    `${tg(EM.time, "🕔")} davomiyligi : <b>${m.duration ? formatDuration(m.duration) : "—"}</b>`,
   ];
   return lines.join("\n\n");
 }
 
-/** "bot orqali kinoni ko'rish" tugmasi (deep-link) */
+/** "bot orqali kinoni ko'rish" tugmasi (deep-link) — ikonkasiz */
 export function movieWatchButton(botUsername: string, code: number) {
   return {
     text: "🤖 bot orqali kinoni ko'rish",
     url: `https://t.me/${botUsername}?start=movie_${code}`,
-    icon_custom_emoji_id: EM.bot,
   };
 }
 

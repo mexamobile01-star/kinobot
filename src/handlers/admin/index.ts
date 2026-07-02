@@ -1,8 +1,6 @@
 import { Composer } from "grammy";
 import { createConversation } from "@grammyjs/conversations";
-import { isAdmin, isOwner } from "../../config.js";
-import { ce } from "../../utils/emoji.js";
-import { adminMenuKeyboard } from "../../utils/keyboard.js";
+import { isAdmin } from "../../config.js";
 import type { MyContext } from "../../types.js";
 
 import { statisticsHandler } from "./statistics.js";
@@ -24,13 +22,6 @@ const admin = adminHandler.filter((ctx) => isAdmin(ctx.from?.id));
 admin.use(createConversation(addMovie, "addMovie"));
 admin.use(createConversation(addSerial, "addSerial"));
 admin.use(createConversation(addEpisode, "addEpisode"));
-
-// /admin buyrug'i
-admin.command("admin", async (ctx) => {
-  await ctx.reply(`${ce("settings")} <b>Admin panel</b>`, {
-    reply_markup: adminMenuKeyboard(isOwner(ctx.from?.id)),
-  });
-});
 
 // Bo'limlar
 admin.use(statisticsHandler);

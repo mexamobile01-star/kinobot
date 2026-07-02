@@ -1,7 +1,6 @@
 import { Composer } from "grammy";
 import { prisma } from "../prisma.js";
 import { isAdmin, isOwner } from "../config.js";
-import { ce } from "../utils/emoji.js";
 import { adminMenuKeyboard, userMenuKeyboard } from "../utils/keyboard.js";
 import { ensureSubscribed, getUnsubscribedChannels } from "../utils/subscription.js";
 import { getBool, KEYS } from "../utils/settings.js";
@@ -12,8 +11,14 @@ import type { MyContext } from "../types.js";
 export const startHandler = new Composer<MyContext>();
 
 const WELCOME =
-  `<tg-emoji emoji-id="5258077307985207053">🎬</tg-emoji> <b>Kino vaqti</b>\n\n` +
-  `Kino kodini yuboring yoki nom bo'yicha qidiring.`;
+  `<tg-emoji emoji-id="5258077307985207053">🎬</tg-emoji> <b>Kino vaqti botiga xush kelibsiz!</b>\n\n` +
+  `Bu yerda eng sara kinolar va seriallar sizni kutmoqda.\n\n` +
+  `<b>Kino kodini</b> yuboring — men uni darhol topib beraman.\n` +
+  `Yoki kino <b>nomini</b> yozib qidiring.\n\n` +
+  `<tg-emoji emoji-id="5429571366384842791">🔎</tg-emoji> Masalan: <code>123</code>`;
+
+// Reply keyboardni ko'rsatish uchun bo'sh (ko'rinmas) matn — admin uchun
+const BLANK = "⠀";
 
 async function deliverMovieByCode(ctx: MyContext, code: number): Promise<boolean> {
   const movie = await prisma.movie.findUnique({ where: { code } });
@@ -36,34 +41,28 @@ startHandler.command("start", async (ctx) => {
     if (Number.isInteger(refId)) await attachReferrer(uid, refId);
   }
 
+  // Admin — xabarsiz, faqat knopkalar
   if (isAdmin(uid)) {
-    await ctx.reply(
-      `${ce("settings")} <b>Admin panelga xush kelibsiz!</b>`,
-      { reply_markup: adminMenuKeyboard(isOwner(uid)) }
-    );
+    await ctx.reply(BLANK, { reply_markup: adminMenuKeyboard(isOwner(uid)) });
     return;
   }
 
-  const forceSub = await getBool(KEYS.forceSubEnabled, true);
-  if (forceSub) {
-    const ok = await ensureSubscribed(ctx, uid);
-    if (!ok) {
-      // Obunadan keyin kino yetkazish uchun kodni saqlab qo'yamiz
-      if (pendingMovieCode !== null) {
-        ctx.session.scratch = { ...(ctx.session.scratch ?? {}), pendingMovieCode };
-      }
-      return;
-    }
-  }
-
-  await confirmReferral(ctx, uid);
-
-  // Deep-link kino
+  // Deep-link kino — bu yerda majburiy obunani tekshiramiz
   if (pendingMovieCode !== null) {
+    const forceSub = await getBool(KEYS.forceSubEnabled, true);
+    if (forceSub) {
+      const ok = await ensureSubscribed(ctx, uid);
+      if (!ok) {
+        ctx.session.scratch = { ...(ctx.session.scratch ?? {}), pendingMovieCode };
+        return;
+      }
+    }
+    await confirmReferral(ctx, uid);
     const ok = await deliverMovieByCode(ctx, pendingMovieCode);
     if (ok) return;
   }
 
+  // Oddiy /start — chiroyli welcome (obuna kod yozilganda tekshiriladi)
   await ctx.reply(WELCOME, { reply_markup: userMenuKeyboard() });
 });
 

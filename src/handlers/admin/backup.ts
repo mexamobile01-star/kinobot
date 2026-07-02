@@ -82,6 +82,7 @@ backupHandler.callbackQuery("backup:get", async (ctx) => {
   const json = JSON.stringify(data, bigintReplacer, 2);
   const fileName = `kinobot-backup-${new Date().toISOString().slice(0, 10)}.json`;
 
+  // Hujjat ostida knopka chiqmasin
   await ctx.replyWithDocument(
     new InputFile(Buffer.from(json, "utf-8"), fileName),
     {
@@ -91,7 +92,6 @@ backupHandler.callbackQuery("backup:get", async (ctx) => {
         `Seriallar: <b>${serials.length}</b> (${episodes.length} qism)\n` +
         `Kanallar: <b>${channels.length}</b>\n` +
         `Foydalanuvchilar: <b>${users.length}</b>`,
-      reply_markup: await backupMenuWithBack(),
     }
   );
 });
