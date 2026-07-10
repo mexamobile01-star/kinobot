@@ -25,9 +25,15 @@ export const config = {
 // Dinamik admin Set — ownerlar + DB'dan yuklangan qo'shimcha adminlar
 export const adminIds = new Set<bigint>(config.ownerIds);
 
+// Admin huquqlari (in-memory). null = barcha bo'limlar ruxsat
+export const adminPerms = new Map<string, string[] | null>();
+// Kanal qo'shish limiti. null/undefined = cheksiz
+export const adminChannelLimit = new Map<string, number | null>();
+
 export function isOwner(userId?: number | bigint): boolean {
-  if (!userId || config.ownerIds.length === 0) return false;
-  return config.ownerIds[0] === BigInt(userId);
+  if (!userId) return false;
+  const id = BigInt(userId);
+  return config.ownerIds.some((o) => o === id);
 }
 
 export function isAdmin(userId?: number | bigint): boolean {
@@ -41,4 +47,27 @@ export function addAdminId(id: bigint): void {
 
 export function removeAdminId(id: bigint): void {
   if (!config.ownerIds.includes(id)) adminIds.delete(id);
+}
+
+/** Admin biror bo'limga ruxsati bormi? Owner — har doim ha. */
+export function adminCan(userId: number | bigint, section: string): boolean {
+  if (isOwner(userId)) return true;
+  const perms = adminPerms.get(BigInt(userId).toString());
+  if (perms === null || perms === undefined) return true; // cheklovsiz admin
+  return perms.includes(section);
+}
+
+/** Admin qo'sha oladigan kanal limiti (null = cheksiz) */
+export function getChannelLimit(userId: number | bigint): number | null {
+  if (isOwner(userId)) return null;
+  const lim = adminChannelLimit.get(BigInt(userId).toString());
+  return lim ?? null;
+}
+
+export function setAdminPerms(id: bigint, perms: string[] | null): void {
+  adminPerms.set(id.toString(), perms);
+}
+
+export function setAdminChannelLimit(id: bigint, limit: number | null): void {
+  adminChannelLimit.set(id.toString(), limit);
 }

@@ -1,6 +1,6 @@
 import { Composer, InputFile } from "grammy";
 import { prisma } from "../../prisma.js";
-import { config } from "../../config.js";
+import { config, adminCan } from "../../config.js";
 import { ADMIN_MENU_BUTTONS, ibtn, BE, kb } from "../../utils/keyboard.js";
 import { clearSettingsCache, getBool, setBool, KEYS } from "../../utils/settings.js";
 import type { MyContext } from "../../types.js";
@@ -15,19 +15,20 @@ const bigintReplacer = (_key: string, value: unknown) =>
 async function backupMenuWithBack() {
   const auto = await getBool(KEYS.autoBackupEnabled, false);
   return kb(
-    [ibtn("📥 Backup olish",      "backup:get",     "primary", BE.backup)],
-    [ibtn("📤 Backupdan tiklash", "backup:restore", "success", BE.folder)],
+    [ibtn("Backup olish",      "backup:get",     "primary", BE.backup)],
+    [ibtn("Backupdan tiklash", "backup:restore", "success", BE.folder)],
     [ibtn(
-      auto ? "🟢 Avto backup: Yoqilgan (3 kun)" : "🔴 Avto backup: O'chirilgan",
+      auto ? "Avto backup: Yoqilgan (3 kun)" : "Avto backup: O'chirilgan",
       "backup:autotoggle",
       auto ? "success" : "danger"
     )],
-    [ibtn("Menyuga qaytish",      "backup:close",   undefined, BE.backMenu)],
+    [ibtn("Menyuga qaytish",   "backup:close",   undefined, BE.backMenu)],
   );
 }
 
 // ============ MENYU ============
 backupHandler.hears(ADMIN_MENU_BUTTONS.backup, async (ctx) => {
+  if (!adminCan(ctx.from?.id ?? 0, "backup")) return;
   await ctx.reply(
     `<b>Backup</b>\n\nBarcha ma'lumotlarni eksport qilish yoki tiklash.\n` +
     `Avto backup yoqilsa — har 3 kunda avtomatik yuboriladi.`,
@@ -152,8 +153,8 @@ backupHandler.on("message:document", async (ctx, next) => {
     `⚠️ <b>Diqqat!</b> Mavjud ma'lumotlar ustiga yoziladi. Davom etasizmi?`,
     {
       reply_markup: kb(
-        [ibtn("✅ Ha, tiklayman",  "backup:confirm", "success", BE.check)],
-        [ibtn("❌ Bekor qilish",   "backup:cancel",  "danger")],
+        [ibtn("Ha, tiklayman", "backup:confirm", "success", BE.check)],
+        [ibtn("Bekor qilish",  "backup:cancel",  "danger")],
       ),
     }
   );

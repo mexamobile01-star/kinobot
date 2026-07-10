@@ -1,7 +1,7 @@
 import { Composer } from "grammy";
 import type { Conversation } from "@grammyjs/conversations";
 import { prisma } from "../../prisma.js";
-import { config, isOwner } from "../../config.js";
+import { config, adminCan } from "../../config.js";
 import { ce, e } from "../../utils/emoji.js";
 import { ADMIN_MENU_BUTTONS, ibtn, BE, kb, cancelKeyboard, adminMenuKeyboard } from "../../utils/keyboard.js";
 import { isValidUrl, resolveButtonStyle } from "../../utils/contentButton.js";
@@ -14,7 +14,7 @@ const CANCEL = "❌ Bekor qilish";
 const isCancel = (t?: string) => t === CANCEL || t === "/cancel";
 const stop = (ctx: MyContext) =>
   ctx.reply("❌ Bekor qilindi.", {
-    reply_markup: adminMenuKeyboard(isOwner(ctx.from?.id)),
+    reply_markup: adminMenuKeyboard(ctx.from?.id),
   });
 
 function serialMenu() {
@@ -28,6 +28,7 @@ function serialMenu() {
 }
 
 serialsHandler.hears(ADMIN_MENU_BUTTONS.serials, async (ctx) => {
+  if (!adminCan(ctx.from?.id ?? 0, "serials")) return;
   const count = await prisma.serial.count();
   await ctx.reply(
     `<tg-emoji emoji-id="${BE.serial}">📺</tg-emoji> <b>Serial boshqaruvi</b>\n\n` +
@@ -40,7 +41,7 @@ serialsHandler.callbackQuery("sr:close", async (ctx) => {
   await ctx.answerCallbackQuery();
   await ctx.deleteMessage().catch(() => {});
   await ctx.reply("Admin panel:", {
-    reply_markup: adminMenuKeyboard(isOwner(ctx.from.id)),
+    reply_markup: adminMenuKeyboard(ctx.from.id),
   });
 });
 
@@ -95,7 +96,7 @@ export async function addSerial(conversation: Conversation<MyContext>, ctx: MyCo
   await ctx.reply(
     `${ce("check")} Serial qo'shildi: <b>${e.escapeHtml(serial.title)}</b> (kod <code>${serial.code}</code>)\n` +
       `Endi "🎞 Qism qo'shish" orqali sezon va qismlarni qo'shing.`,
-    { reply_markup: adminMenuKeyboard(isOwner(ctx.from?.id)) }
+    { reply_markup: adminMenuKeyboard(ctx.from?.id) }
   );
 }
 
@@ -167,7 +168,7 @@ export async function addEpisode(conversation: Conversation<MyContext>, ctx: MyC
   const video = vidCtx.message?.video;
   if (!video) {
     await vidCtx.reply("❌ Bu video emas.", {
-      reply_markup: adminMenuKeyboard(isOwner(vidCtx.from?.id)),
+      reply_markup: adminMenuKeyboard(vidCtx.from?.id),
     });
     return;
   }
@@ -203,7 +204,7 @@ export async function addEpisode(conversation: Conversation<MyContext>, ctx: MyC
   await ctx.reply(
     `${ce("check")} Qism saqlandi: <b>${e.escapeHtml(serialTitle)}</b> — ${seasonNum}-sezon, ${result.number}-qism.\n` +
       `Yana qism qo'shish uchun "🎞 Qism qo'shish".`,
-    { reply_markup: adminMenuKeyboard(isOwner(ctx.from?.id)) }
+    { reply_markup: adminMenuKeyboard(ctx.from?.id) }
   );
 }
 

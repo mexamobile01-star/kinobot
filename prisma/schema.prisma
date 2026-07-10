@@ -21,6 +21,8 @@ model User {
   referralConfirmed Boolean  @default(false) // obunadan keyin tasdiqlanadi
   isBlocked         Boolean  @default(false)
   isAdmin           Boolean  @default(false)
+  permissions       String?  // ruxsat etilgan bo'limlar (vergul bilan); null = hammasi
+  channelLimit      Int?     // majburiy obunaga qo'sha oladigan max kanal; null = cheksiz
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

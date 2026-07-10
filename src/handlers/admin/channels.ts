@@ -1,6 +1,6 @@
 import { Composer, Keyboard } from "grammy";
 import type { ChatAdministratorRights } from "grammy/types";
-import { isOwner } from "../../config.js";
+import { adminCan, getChannelLimit } from "../../config.js";
 import { prisma } from "../../prisma.js";
 import { ce, e } from "../../utils/emoji.js";
 import { ADMIN_MENU_BUTTONS, adminMenuKeyboard, ibtn, BE, kb } from "../../utils/keyboard.js";
@@ -66,6 +66,7 @@ async function channelMenuData() {
 }
 
 channelsHandler.hears(ADMIN_MENU_BUTTONS.channels, async (ctx) => {
+  if (!adminCan(ctx.from?.id ?? 0, "channels")) return;
   const { text, markup } = await channelMenuData();
   await ctx.reply(text, { reply_markup: markup });
 });
@@ -81,7 +82,7 @@ channelsHandler.callbackQuery("ch:menu",  async (ctx) => { await ctx.answerCallb
 channelsHandler.callbackQuery("ch:close", async (ctx) => {
   await ctx.answerCallbackQuery();
   await ctx.deleteMessage().catch(() => {});
-  await ctx.reply("Admin panel:", { reply_markup: adminMenuKeyboard(isOwner(ctx.from.id)) });
+  await ctx.reply("Admin panel:", { reply_markup: adminMenuKeyboard(ctx.from.id) });
 });
 
 // ============ TOGGLE ============
@@ -148,29 +149,28 @@ channelsHandler.callbackQuery("ch:btnsettings", async (ctx) => {
 });
 
 async function renderBtnSettings(ctx: MyContext, edit = true) {
-  const btnText  = await getSetting(KEYS.subCheckBtnText,  "Tekshirish");
-  const btnStyle = await getSetting(KEYS.subCheckBtnStyle, "");
+  const btnText   = await getSetting(KEYS.subCheckBtnText,    "Tekshirish");
+  const btnStyle  = await getSetting(KEYS.subCheckBtnStyle,   "");
+  const chLabel   = await getSetting(KEYS.subChannelBtnLabel, "+ Kanalga obuna bo'lish");
 
   const text =
-    `🎨 <b>Obuna knopkalari sozlamasi</b>\n\n` +
-    `"Tekshirish" knopkasi:\n` +
-    `Matn: <b>${e.escapeHtml(btnText)}</b>\n` +
-    `Rang: <b>${btnStyle}</b>\n\n` +
-    `<i>Bu knopka foydalanuvchiga obuna so'ralganda ko'rinadi.</i>`;
+    `<b>Obuna knopkalari sozlamasi</b>\n\n` +
+    `<b>Kanal knopkasi (standart yorliq):</b>\n<b>${e.escapeHtml(chLabel)}</b>\n\n` +
+    `<b>"Tekshirish" knopkasi:</b>\nMatn: <b>${e.escapeHtml(btnText)}</b>\n` +
+    `Rang: <b>${btnStyle || "yo'q"}</b>\n\n` +
+    `<i>Bu knopkalar foydalanuvchiga obuna so'ralganda ko'rinadi.\n` +
+    `Har bir kanalga alohida yorliq — "Ro'yxat" bo'limida.</i>`;
 
   const reply_markup = kb(
-    [
-      ibtn("✏️ Matnni o'zgartirish", "ch:subbtntext",  "primary", BE.editName),
-    ],
+    [ibtn("Kanal knopka matnini o'zgartirish", "ch:chlbltext", "primary")],
+    [ibtn("Tekshirish matnini o'zgartirish", "ch:subbtntext", "primary")],
     [
       ibtn("Ko'k",   "ch:subbtnsty:primary", "primary"),
       ibtn("Yashil", "ch:subbtnsty:success", "success"),
       ibtn("Qizil",  "ch:subbtnsty:danger",  "danger"),
       ibtn("Random", "ch:subbtnsty:random",  "success"),
     ],
-    [
-      ibtn("🔄 Standartga qaytarish", "ch:subbtnreset", "danger"),
-    ],
+    [ibtn("Standartga qaytarish", "ch:subbtnreset", "danger")],
     [ibtn("Orqaga", "ch:menu", undefined, BE.backMenu)],
   );
 
@@ -180,6 +180,15 @@ async function renderBtnSettings(ctx: MyContext, edit = true) {
     await ctx.reply(text, { reply_markup });
   }
 }
+
+channelsHandler.callbackQuery("ch:chlbltext", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), editChannelDefLabel: true };
+  await ctx.reply(
+    `Kanal knopkasining <b>standart yorlig'ini</b> yuboring.\n\n` +
+    `Masalan: <code>+ Kanalga obuna bo'lish</code>`
+  );
+});
 
 channelsHandler.callbackQuery("ch:subbtntext", async (ctx) => {
   await ctx.answerCallbackQuery();
@@ -196,8 +205,9 @@ channelsHandler.callbackQuery(/^ch:subbtnsty:(primary|success|danger|random)$/, 
 
 channelsHandler.callbackQuery("ch:subbtnreset", async (ctx) => {
   await Promise.all([
-    setSetting(KEYS.subCheckBtnText,  "Tekshirish"),
-    setSetting(KEYS.subCheckBtnStyle, ""),
+    setSetting(KEYS.subCheckBtnText,     "Tekshirish"),
+    setSetting(KEYS.subCheckBtnStyle,    ""),
+    setSetting(KEYS.subChannelBtnLabel,  "+ Kanalga obuna bo'lish"),
   ]);
   await ctx.answerCallbackQuery({ text: "Standartga qaytarildi." });
   await renderBtnSettings(ctx);
@@ -207,6 +217,18 @@ channelsHandler.callbackQuery("ch:subbtnreset", async (ctx) => {
 
 // ============ QO'SHISH — TUR TANLASH ============
 channelsHandler.callbackQuery("ch:add", async (ctx) => {
+  // Kanal limiti tekshiruvi (owner uchun cheksiz)
+  const limit = getChannelLimit(ctx.from.id);
+  if (limit !== null) {
+    const count = await prisma.channel.count();
+    if (count >= limit) {
+      await ctx.answerCallbackQuery({
+        text: `❌ Siz maksimal ${limit} ta kanal qo'sha olasiz. Limit to'ldi.`,
+        show_alert: true,
+      });
+      return;
+    }
+  }
   await ctx.answerCallbackQuery();
   await ctx.editMessageText(
     `<b>Qaysi turdagi kanal/guruh qo'shasiz?</b>\n\n` +
@@ -320,6 +342,23 @@ channelsHandler.on("message", async (ctx, next) => {
   const hasAddType    = !!ctx.session.scratch?.addChannelType;
   const editLabelId   = ctx.session.scratch?.editChannelLabel as number | undefined;
   const editSubBtn    = !!ctx.session.scratch?.editSubBtnText;
+  const editDefLabel  = !!ctx.session.scratch?.editChannelDefLabel;
+
+  // Kanal standart yorlig'ini tahrirlash
+  if (editDefLabel) {
+    if (ctx.message?.chat_shared) return next();
+    const msgText = ctx.message?.text?.trim();
+    if (!msgText) return next();
+    if (ctx.session.scratch) delete ctx.session.scratch.editChannelDefLabel;
+    if (msgText === "❌ Bekor qilish" || msgText === "/cancel") {
+      await ctx.reply("❌ Bekor qilindi.");
+      return;
+    }
+    await setSetting(KEYS.subChannelBtnLabel, msgText.slice(0, 64));
+    await ctx.reply(`${ce("check")} Kanal knopka matni saqlandi: <b>${e.escapeHtml(msgText.slice(0, 64))}</b>`);
+    await renderBtnSettings(ctx, false);
+    return;
+  }
 
   // Kanal yorlig'ini tahrirlash
   if (editLabelId) {

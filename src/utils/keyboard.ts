@@ -1,4 +1,5 @@
 import { InlineKeyboard, Keyboard } from "grammy";
+import { isOwner, adminCan } from "../config.js";
 
 // ===================== BOT API 9.4 — PREMIUM EMOJI TUGMALAR =====================
 // style: "primary" | "success" | "danger" faqat kerak joylarda ishlatiladi.
@@ -77,26 +78,36 @@ export function rbtn(text: string, style?: BtnStyle, emojiId?: string) {
 }
 
 // ===================== ADMIN REPLY KEYBOARD =====================
-export function adminMenuKeyboard(owner = false): Keyboard {
-  const kb = new Keyboard()
-    .text(ADMIN_MENU_BUTTONS.stats, { icon_custom_emoji_id: BE.stats })
-    .text(ADMIN_MENU_BUTTONS.channels, { icon_custom_emoji_id: BE.channel })
-    .row()
-    .text(ADMIN_MENU_BUTTONS.movies, { icon_custom_emoji_id: BE.movie })
-    .text(ADMIN_MENU_BUTTONS.serials, { icon_custom_emoji_id: BE.serial });
+const SECTION_META: { key: string; text: string; emoji: string }[] = [
+  { key: "stats",     text: ADMIN_MENU_BUTTONS.stats,     emoji: BE.stats },
+  { key: "channels",  text: ADMIN_MENU_BUTTONS.channels,  emoji: BE.channel },
+  { key: "movies",    text: ADMIN_MENU_BUTTONS.movies,    emoji: BE.movie },
+  { key: "serials",   text: ADMIN_MENU_BUTTONS.serials,   emoji: BE.serial },
+  { key: "broadcast", text: ADMIN_MENU_BUTTONS.broadcast, emoji: BE.broadcast },
+  { key: "funnel",    text: ADMIN_MENU_BUTTONS.funnel,    emoji: BE.trend },
+  { key: "referrals", text: ADMIN_MENU_BUTTONS.referrals, emoji: BE.users },
+  { key: "backup",    text: ADMIN_MENU_BUTTONS.backup,    emoji: BE.backup },
+];
 
+export function adminMenuKeyboard(userId?: number | bigint): Keyboard {
+  const owner = isOwner(userId);
+  const kb = new Keyboard();
+
+  const allowed = SECTION_META.filter((s) => adminCan(userId ?? 0, s.key));
+
+  let col = 0;
+  for (const s of allowed) {
+    kb.text(s.text, { icon_custom_emoji_id: s.emoji });
+    if (++col % 2 === 0) kb.row();
+  }
+  if (col % 2 !== 0) kb.row();
+
+  // "Admin boshqaruvi" — faqat owner
   if (owner) {
-    kb.row()
-      .text(ADMIN_MENU_BUTTONS.broadcast, { icon_custom_emoji_id: BE.broadcast })
-      .text(ADMIN_MENU_BUTTONS.funnel, { icon_custom_emoji_id: BE.trend });
-    kb.row()
-      .text(ADMIN_MENU_BUTTONS.referrals, { icon_custom_emoji_id: BE.users })
-      .text(ADMIN_MENU_TEXT, { icon_custom_emoji_id: BE.admin });
+    kb.text(ADMIN_MENU_TEXT, { icon_custom_emoji_id: BE.admin }).row();
   }
 
-  return kb.row()
-    .text(ADMIN_MENU_BUTTONS.backup, { icon_custom_emoji_id: BE.backup })
-    .resized();
+  return kb.resized();
 }
 
 // ===================== FOYDALANUVCHI REPLY KEYBOARD =====================

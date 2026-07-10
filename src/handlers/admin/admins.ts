@@ -1,8 +1,12 @@
 import { Composer, Keyboard } from "grammy";
 import { prisma } from "../../prisma.js";
-import { addAdminId, config, isOwner, removeAdminId } from "../../config.js";
-import { ce, e } from "../../utils/emoji.js";
-import { ADMIN_MENU_TEXT, BE, adminMenuKeyboard, ibtn, kb, rbtn } from "../../utils/keyboard.js";
+import {
+  addAdminId, config, isOwner, removeAdminId,
+  setAdminPerms, setAdminChannelLimit,
+} from "../../config.js";
+import { e } from "../../utils/emoji.js";
+import { ADMIN_MENU_TEXT, adminMenuKeyboard, ibtn, kb } from "../../utils/keyboard.js";
+import { SECTIONS, SECTION_LABELS, parsePerms, serializePerms, type Section } from "../../utils/permissions.js";
 import type { MyContext } from "../../types.js";
 import type { User } from "@prisma/client";
 
@@ -12,44 +16,27 @@ const PAGE = 8;
 const REQUEST_USERS = 77;
 const BACK_TEXT = "Orqaga";
 
-type AdminAction = "addById" | "addByUsername";
-
-function adminAction(ctx: MyContext): AdminAction | null {
-  const action = ctx.session.scratch?.adminAction;
-  return action === "addById" || action === "addByUsername" ? action : null;
-}
-
-function setAdminAction(ctx: MyContext, action: AdminAction): void {
-  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), adminAction: action };
-}
-
-function clearAdminAction(ctx: MyContext): void {
-  if (!ctx.session.scratch) return;
-  delete ctx.session.scratch.adminAction;
-}
-
 function isOwnerId(id: bigint): boolean {
   return config.ownerIds.includes(id);
 }
 
-function userLabel(user: Pick<User, "id" | "firstName" | "username" | "isAdmin">): string {
-  const name = user.firstName?.trim() || "Nomsiz";
-  const username = user.username ? ` @${user.username}` : "";
-  return `${user.isAdmin ? "👑" : "👤"} ${name}${username} (${user.id})`;
+function userLabel(u: Pick<User, "id" | "firstName" | "username">): string {
+  const name = u.firstName?.trim() || "Nomsiz";
+  const username = u.username ? ` @${u.username}` : "";
+  return `${name}${username}`;
 }
+
+// ─── Admin qo'shish / olib tashlash ──────────────────────────────────────────
 
 async function grantAdmin(
   id: bigint,
   profile: { firstName?: string | null; username?: string | null } = {}
-): Promise<User> {
+): Promise<User | null> {
+  if (isOwnerId(id)) return null; // owner allaqachon to'liq huquqli
+
   const user = await prisma.user.upsert({
     where: { id },
-    create: {
-      id,
-      firstName: profile.firstName ?? null,
-      username: profile.username ?? null,
-      isAdmin: true,
-    },
+    create: { id, firstName: profile.firstName ?? null, username: profile.username ?? null, isAdmin: true },
     update: {
       isAdmin: true,
       ...(profile.firstName !== undefined && { firstName: profile.firstName }),
@@ -57,20 +44,19 @@ async function grantAdmin(
     },
   });
   addAdminId(id);
+  setAdminPerms(id, parsePerms(user.permissions));
+  setAdminChannelLimit(id, user.channelLimit ?? null);
   return user;
 }
 
 async function revokeAdmin(id: bigint): Promise<boolean> {
   if (isOwnerId(id)) return false;
-  await prisma.user
-    .update({
-      where: { id },
-      data: { isAdmin: false },
-    })
-    .catch(() => null);
+  await prisma.user.update({ where: { id }, data: { isAdmin: false } }).catch(() => null);
   removeAdminId(id);
   return true;
 }
+
+// ─── Asosiy menyu ────────────────────────────────────────────────────────────
 
 async function renderAdminMenu(ctx: MyContext, edit = false) {
   const [users, admins] = await Promise.all([
@@ -79,23 +65,16 @@ async function renderAdminMenu(ctx: MyContext, edit = false) {
   ]);
 
   const text =
-    `${ce("stats")} <b>Admin boshqaruvi</b>\n\n` +
+    `<b>Admin boshqaruvi</b>\n\n` +
     `Ownerlar: <b>${config.ownerIds.length}</b>\n` +
-    `Qo'shimcha adminlar: <b>${admins}</b>\n` +
-    `Bot foydalanuvchilari: <b>${users}</b>\n\n` +
-    `Admin qo'shish usulini tanlang:`;
+    `Adminlar: <b>${admins}</b>\n` +
+    `Foydalanuvchilar: <b>${users}</b>`;
 
   const markup = kb(
-    [
-      ibtn("ID orqali", "adm:add:id", "primary", BE.star),
-      ibtn("Username orqali", "adm:add:username", "primary", BE.users),
-    ],
-    [
-      ibtn("Tanlash", "adm:pick:0", "success", BE.list),
-      ibtn("Telegramdan tanlash", "adm:telegram", "success", BE.check),
-    ],
-    [ibtn("Adminlar ro'yxati", "adm:list:0", "primary", BE.menu)],
-    [ibtn("Menyuga qaytish", "adm:close", undefined, BE.backMenu)]
+    [ibtn("Telegramdan tanlash", "adm:telegram", "success")],
+    [ibtn("ID yoki username orqali", "adm:add", "primary")],
+    [ibtn("Adminlar ro'yxati", "adm:list:0", "primary")],
+    [ibtn("Menyuga qaytish", "adm:close")],
   );
 
   if (edit) {
@@ -109,79 +88,57 @@ async function renderAdminMenu(ctx: MyContext, edit = false) {
 
 adminsHandler.hears(ADMIN_MENU_TEXT, async (ctx) => {
   if (!isOwner(ctx.from?.id)) return;
-  clearAdminAction(ctx);
+  if (ctx.session.scratch) delete ctx.session.scratch.adminAction;
   await renderAdminMenu(ctx);
 });
 
 adminsHandler.callbackQuery("adm:close", async (ctx) => {
   await ctx.answerCallbackQuery();
   await ctx.deleteMessage().catch(() => {});
-  await ctx.reply("Admin panel:", {
-    reply_markup: adminMenuKeyboard(isOwner(ctx.from.id)),
-  });
+  await ctx.reply("Admin panel:", { reply_markup: adminMenuKeyboard(ctx.from.id) });
 });
 
 adminsHandler.callbackQuery("adm:menu", async (ctx) => {
   await ctx.answerCallbackQuery();
-  clearAdminAction(ctx);
+  if (ctx.session.scratch) delete ctx.session.scratch.adminAction;
   await renderAdminMenu(ctx, true);
 });
 
-adminsHandler.callbackQuery("adm:add:id", async (ctx) => {
-  if (!isOwner(ctx.from.id)) {
-    await ctx.answerCallbackQuery({ text: "Faqat owner uchun.", show_alert: true });
-    return;
-  }
-  setAdminAction(ctx, "addById");
+adminsHandler.callbackQuery("adm:noop", (ctx) => ctx.answerCallbackQuery());
+
+// ─── ID / username orqali qo'shish (birlashtirilgan) ─────────────────────────
+
+adminsHandler.callbackQuery("adm:add", async (ctx) => {
+  if (!isOwner(ctx.from.id)) { await ctx.answerCallbackQuery({ text: "Faqat owner.", show_alert: true }); return; }
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), adminAction: "add" };
   await ctx.answerCallbackQuery();
   await ctx.reply(
-    `${ce("star")} Admin qilinadigan foydalanuvchi <b>Telegram ID</b>sini yuboring.\n` +
-      `Masalan: <code>123456789</code>`
+    `Admin qilinadigan foydalanuvchining <b>ID</b> yoki <b>username</b>ini yuboring.\n\n` +
+    `Masalan: <code>123456789</code> yoki <code>@username</code>\n\n` +
+    `<i>Username orqali faqat botga oldin kirgan foydalanuvchi topiladi.</i>`
   );
 });
 
-adminsHandler.callbackQuery("adm:add:username", async (ctx) => {
-  if (!isOwner(ctx.from.id)) {
-    await ctx.answerCallbackQuery({ text: "Faqat owner uchun.", show_alert: true });
-    return;
-  }
-  setAdminAction(ctx, "addByUsername");
-  await ctx.answerCallbackQuery();
-  await ctx.reply(
-    `${ce("stats")} Admin qilinadigan foydalanuvchi <b>username</b>ini yuboring.\n` +
-      `Masalan: <code>@username</code>\n\n` +
-      `Eslatma: username orqali faqat botga oldin kirgan foydalanuvchilar topiladi.`
-  );
-});
+// ─── Telegramdan tanlash ─────────────────────────────────────────────────────
 
 adminsHandler.callbackQuery("adm:telegram", async (ctx) => {
-  if (!isOwner(ctx.from.id)) {
-    await ctx.answerCallbackQuery({ text: "Faqat owner uchun.", show_alert: true });
-    return;
-  }
+  if (!isOwner(ctx.from.id)) { await ctx.answerCallbackQuery({ text: "Faqat owner.", show_alert: true }); return; }
   await ctx.answerCallbackQuery();
 
   const keyboard = new Keyboard()
-    .requestUsers(rbtn("Foydalanuvchini tanlash", undefined, BE.users), REQUEST_USERS, {
-      user_is_bot: false,
-      max_quantity: 10,
-      request_name: true,
-      request_username: true,
+    .requestUsers("Foydalanuvchini tanlash", REQUEST_USERS, {
+      user_is_bot: false, max_quantity: 10, request_name: true, request_username: true,
     })
     .row()
-    .text(BACK_TEXT, { icon_custom_emoji_id: BE.home })
-    .resized()
-    .oneTime();
+    .text(BACK_TEXT)
+    .resized().oneTime();
 
-  await ctx.reply(
-    `${ce("stats")} Telegram ro'yxatidan foydalanuvchini tanlang.`,
-    { reply_markup: keyboard }
-  );
+  await ctx.reply("Telegram ro'yxatidan foydalanuvchini tanlang.", { reply_markup: keyboard });
 });
 
 adminsHandler.hears(BACK_TEXT, async (ctx) => {
   if (!isOwner(ctx.from?.id)) return;
-  clearAdminAction(ctx);
+  if (ctx.session.scratch) delete ctx.session.scratch.adminAction;
   await ctx.reply("Admin boshqaruvi:", { reply_markup: { remove_keyboard: true } });
   await renderAdminMenu(ctx);
 });
@@ -194,184 +151,228 @@ adminsHandler.on("message:users_shared", async (ctx) => {
   const added: string[] = [];
   for (const user of shared.users) {
     const saved = await grantAdmin(BigInt(user.user_id), {
-      firstName: user.first_name ?? null,
-      username: user.username ?? null,
+      firstName: user.first_name ?? null, username: user.username ?? null,
     });
-    added.push(userLabel(saved));
+    if (saved) added.push(userLabel(saved));
   }
 
   await ctx.reply(
-    `${ce("check")} <b>Admin qo'shildi:</b>\n\n${added.map(e.escapeHtml).join("\n")}`,
+    added.length
+      ? `<b>Admin qo'shildi:</b>\n\n${added.map(e.escapeHtml).join("\n")}`
+      : `Hech kim qo'shilmadi (owner qayta admin qilinmaydi).`,
     { reply_markup: { remove_keyboard: true } }
   );
   await renderAdminMenu(ctx);
 });
 
-adminsHandler.callbackQuery(/^adm:pick:(\d+)$/, async (ctx) => {
-  if (!isOwner(ctx.from.id)) {
-    await ctx.answerCallbackQuery({ text: "Faqat owner uchun.", show_alert: true });
-    return;
-  }
-  await ctx.answerCallbackQuery();
-
-  const page = Number(ctx.match[1]);
-  const total = await prisma.user.count();
-  const users = await prisma.user.findMany({
-    orderBy: { createdAt: "desc" },
-    skip: page * PAGE,
-    take: PAGE,
-  });
-
-  if (users.length === 0) {
-    await ctx.editMessageText("Foydalanuvchilar hali yo'q.", {
-      reply_markup: kb([ibtn("Orqaga", "adm:menu", undefined, BE.home)]),
-    }).catch(() => {});
-    return;
-  }
-
-  const rows = users.map((user) => [
-    ibtn(
-      userLabel(user).slice(0, 60),
-      user.isAdmin ? `adm:remove:${user.id}` : `adm:pickadd:${user.id}`,
-      user.isAdmin ? "danger" : "success",
-      user.isAdmin ? BE.users : BE.check
-    ),
-  ]);
-
-  const pages = Math.ceil(total / PAGE);
-  const nav = [];
-  if (page > 0) nav.push(ibtn("⬅️", `adm:pick:${page - 1}`));
-  nav.push(ibtn(`${page + 1}/${pages}`, "adm:noop"));
-  if (page < pages - 1) nav.push(ibtn("➡️", `adm:pick:${page + 1}`));
-  rows.push(nav);
-  rows.push([ibtn("Orqaga", "adm:menu", undefined, BE.home)]);
-
-  await ctx.editMessageText(
-    `${ce("list")} <b>Foydalanuvchini tanlang</b>\n\n` +
-      `👤 bosilsa admin qilinadi, 👑 bosilsa adminlik olinadi.`,
-    { reply_markup: kb(...rows) }
-  ).catch(() => {});
-});
+// ─── Adminlar ro'yxati ───────────────────────────────────────────────────────
 
 adminsHandler.callbackQuery(/^adm:list:(\d+)$/, async (ctx) => {
-  if (!isOwner(ctx.from.id)) {
-    await ctx.answerCallbackQuery({ text: "Faqat owner uchun.", show_alert: true });
-    return;
-  }
+  if (!isOwner(ctx.from.id)) { await ctx.answerCallbackQuery({ text: "Faqat owner.", show_alert: true }); return; }
   await ctx.answerCallbackQuery();
 
   const page = Number(ctx.match[1]);
   const total = await prisma.user.count({ where: { isAdmin: true } });
   const admins = await prisma.user.findMany({
-    where: { isAdmin: true },
-    orderBy: { createdAt: "desc" },
-    skip: page * PAGE,
-    take: PAGE,
+    where: { isAdmin: true }, orderBy: { createdAt: "desc" },
+    skip: page * PAGE, take: PAGE,
   });
 
-  const rows = admins.map((user) => [
+  const rows: ReturnType<typeof ibtn>[][] = admins.map((u) => [
     ibtn(
-      `${isOwnerId(user.id) ? "👑 Owner" : "🗑"} ${userLabel(user)}`.slice(0, 60),
-      isOwnerId(user.id) ? "adm:noop" : `adm:remove:${user.id}`,
-      isOwnerId(user.id) ? "primary" : "danger",
-      BE.users
+      `${isOwnerId(u.id) ? "Owner: " : ""}${userLabel(u)}`.slice(0, 60),
+      isOwnerId(u.id) ? "adm:noop" : `adm:view:${u.id}`,
+      "primary"
     ),
   ]);
 
-  const ownerLines = config.ownerIds
-    .map((id) => `👑 Owner: <code>${id}</code>`)
-    .join("\n");
-  const adminLines = admins
-    .map((user) => `• ${e.escapeHtml(userLabel(user))}`)
-    .join("\n");
-
   const pages = Math.max(1, Math.ceil(total / PAGE));
-  const nav = [];
+  const nav: ReturnType<typeof ibtn>[] = [];
   if (page > 0) nav.push(ibtn("⬅️", `adm:list:${page - 1}`));
-  nav.push(ibtn(`${page + 1}/${pages}`, "adm:noop"));
+  if (pages > 1) nav.push(ibtn(`${page + 1}/${pages}`, "adm:noop"));
   if (page < pages - 1) nav.push(ibtn("➡️", `adm:list:${page + 1}`));
-  rows.push(nav);
-  rows.push([ibtn("Orqaga", "adm:menu", undefined, BE.home)]);
+  if (nav.length) rows.push(nav);
+  rows.push([ibtn("Orqaga", "adm:menu")]);
 
   await ctx.editMessageText(
-    `${ce("stats")} <b>Adminlar ro'yxati</b>\n\n` +
-      `${ownerLines || "Owner yo'q"}\n` +
-      (adminLines ? `\n${adminLines}` : ""),
+    `<b>Adminlar ro'yxati</b>\n\nAdminni tanlab, huquqlarini sozlang yoki o'chiring.`,
     { reply_markup: kb(...rows) }
   ).catch(() => {});
 });
 
-adminsHandler.callbackQuery(/^adm:pickadd:(\d+)$/, async (ctx) => {
-  if (!isOwner(ctx.from.id)) {
-    await ctx.answerCallbackQuery({ text: "Faqat owner uchun.", show_alert: true });
-    return;
-  }
-  const id = BigInt(ctx.match[1]);
-  const user = await grantAdmin(id);
-  await ctx.answerCallbackQuery({ text: "Admin qo'shildi." });
-  await ctx.reply(`${ce("check")} Admin qilindi: <b>${e.escapeHtml(userLabel(user))}</b>`);
+// ─── Admin batafsil ──────────────────────────────────────────────────────────
+
+async function renderAdminDetail(ctx: MyContext, id: bigint) {
+  const u = await prisma.user.findUnique({ where: { id } });
+  if (!u) { await ctx.answerCallbackQuery({ text: "Topilmadi.", show_alert: true }); return; }
+
+  const perms = parsePerms(u.permissions);          // null = hammasi
+  const limit = u.channelLimit;
+
+  const permText = perms === null
+    ? "Barcha bo'limlar"
+    : perms.length ? perms.map((p) => SECTION_LABELS[p]).join(", ") : "Hech biri";
+
+  const text =
+    `<b>Admin: ${e.escapeHtml(userLabel(u))}</b>\n` +
+    `ID: <code>${id}</code>\n\n` +
+    `Ruxsatlar: <b>${e.escapeHtml(permText)}</b>\n` +
+    `Kanal limiti: <b>${limit === null ? "cheksiz" : limit}</b>`;
+
+  await ctx.editMessageText(text, {
+    reply_markup: kb(
+      [ibtn("Huquqlarni sozlash", `adm:perms:${id}`, "primary")],
+      [ibtn("Kanal limitini belgilash", `adm:limit:${id}`, "primary")],
+      [ibtn("Adminlikdan olish", `adm:remove:${id}`, "danger")],
+      [ibtn("Orqaga", "adm:list:0")],
+    ),
+  }).catch(() => {});
+}
+
+adminsHandler.callbackQuery(/^adm:view:(\d+)$/, async (ctx) => {
+  if (!isOwner(ctx.from.id)) { await ctx.answerCallbackQuery({ text: "Faqat owner.", show_alert: true }); return; }
+  await ctx.answerCallbackQuery();
+  await renderAdminDetail(ctx, BigInt(ctx.match[1]));
 });
+
+// ─── Huquqlar editori (toggle) ───────────────────────────────────────────────
+
+async function renderPermsEditor(ctx: MyContext, id: bigint) {
+  const u = await prisma.user.findUnique({ where: { id } });
+  if (!u) return;
+  const perms = parsePerms(u.permissions); // null = hammasi
+  const has = (s: Section) => perms === null || perms.includes(s);
+
+  const rows = SECTIONS.map((s) => [
+    ibtn(`${has(s) ? "✅" : "❌"} ${SECTION_LABELS[s]}`, `adm:permtgl:${id}:${s}`, has(s) ? "success" : "danger"),
+  ]);
+  rows.push([
+    ibtn("Hammasini yoqish", `adm:permall:${id}`, "success"),
+    ibtn("Hammasini o'chirish", `adm:permnone:${id}`, "danger"),
+  ]);
+  rows.push([ibtn("Orqaga", `adm:view:${id}`)]);
+
+  await ctx.editMessageText(
+    `<b>Huquqlarni sozlash</b>\n\nHar bir bo'limni yoqing/o'chiring:`,
+    { reply_markup: kb(...rows) }
+  ).catch(() => {});
+}
+
+adminsHandler.callbackQuery(/^adm:perms:(\d+)$/, async (ctx) => {
+  if (!isOwner(ctx.from.id)) { await ctx.answerCallbackQuery(); return; }
+  await ctx.answerCallbackQuery();
+  await renderPermsEditor(ctx, BigInt(ctx.match[1]));
+});
+
+async function saveSections(id: bigint, sections: Section[]) {
+  await prisma.user.update({ where: { id }, data: { permissions: serializePerms(sections) } }).catch(() => null);
+  setAdminPerms(id, sections);
+}
+
+adminsHandler.callbackQuery(/^adm:permtgl:(\d+):(\w+)$/, async (ctx) => {
+  if (!isOwner(ctx.from.id)) { await ctx.answerCallbackQuery(); return; }
+  const id = BigInt(ctx.match[1]);
+  const section = ctx.match[2] as Section;
+  if (!SECTIONS.includes(section)) { await ctx.answerCallbackQuery(); return; }
+
+  const u = await prisma.user.findUnique({ where: { id } });
+  const current = parsePerms(u?.permissions) ?? [...SECTIONS]; // null → materializatsiya
+  const next = current.includes(section)
+    ? current.filter((s) => s !== section)
+    : [...current, section];
+
+  await saveSections(id, next);
+  await ctx.answerCallbackQuery();
+  await renderPermsEditor(ctx, id);
+});
+
+adminsHandler.callbackQuery(/^adm:permall:(\d+)$/, async (ctx) => {
+  if (!isOwner(ctx.from.id)) { await ctx.answerCallbackQuery(); return; }
+  const id = BigInt(ctx.match[1]);
+  await saveSections(id, [...SECTIONS]);
+  await ctx.answerCallbackQuery({ text: "Hammasi yoqildi." });
+  await renderPermsEditor(ctx, id);
+});
+
+adminsHandler.callbackQuery(/^adm:permnone:(\d+)$/, async (ctx) => {
+  if (!isOwner(ctx.from.id)) { await ctx.answerCallbackQuery(); return; }
+  const id = BigInt(ctx.match[1]);
+  await saveSections(id, []);
+  await ctx.answerCallbackQuery({ text: "Hammasi o'chirildi." });
+  await renderPermsEditor(ctx, id);
+});
+
+// ─── Kanal limiti ────────────────────────────────────────────────────────────
+
+adminsHandler.callbackQuery(/^adm:limit:(\d+)$/, async (ctx) => {
+  if (!isOwner(ctx.from.id)) { await ctx.answerCallbackQuery(); return; }
+  await ctx.answerCallbackQuery();
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), adminLimitTarget: ctx.match[1] };
+  await ctx.reply(
+    `Ushbu admin majburiy obunaga qo'sha oladigan <b>maksimal kanal sonini</b> yuboring.\n\n` +
+    `Masalan: <code>2</code>\n` +
+    `Cheksiz qilish uchun: <code>-</code>`
+  );
+});
+
+// ─── Olib tashlash ───────────────────────────────────────────────────────────
 
 adminsHandler.callbackQuery(/^adm:remove:(\d+)$/, async (ctx) => {
-  if (!isOwner(ctx.from.id)) {
-    await ctx.answerCallbackQuery({ text: "Faqat owner uchun.", show_alert: true });
-    return;
-  }
+  if (!isOwner(ctx.from.id)) { await ctx.answerCallbackQuery({ text: "Faqat owner.", show_alert: true }); return; }
   const id = BigInt(ctx.match[1]);
   const ok = await revokeAdmin(id);
-  await ctx.answerCallbackQuery({
-    text: ok ? "Adminlik olindi." : "Ownerni o'chirib bo'lmaydi.",
-    show_alert: !ok,
-  });
-  if (ok) await ctx.reply(`${ce("check")} <code>${id}</code> adminlikdan olindi.`);
+  await ctx.answerCallbackQuery({ text: ok ? "Adminlik olindi." : "Ownerni o'chirib bo'lmaydi.", show_alert: !ok });
+  if (ok) {
+    await ctx.editMessageText(`<code>${id}</code> adminlikdan olindi.`, {
+      reply_markup: kb([ibtn("Orqaga", "adm:list:0")]),
+    }).catch(() => {});
+  }
 });
 
-adminsHandler.callbackQuery("adm:noop", (ctx) => ctx.answerCallbackQuery());
+// ─── Matn kiritish (ID/username qo'shish yoki kanal limiti) ──────────────────
 
 adminsHandler.on("message:text", async (ctx, next) => {
   if (!isOwner(ctx.from.id)) return next();
-  const action = adminAction(ctx);
-  if (!action) return next();
 
-  const text = ctx.message.text.trim();
-  if (text.startsWith("/")) {
-    clearAdminAction(ctx);
-    return next();
+  // Kanal limiti kiritilmoqda
+  const limitTarget = ctx.session.scratch?.adminLimitTarget as string | undefined;
+  if (limitTarget) {
+    const t = ctx.message.text.trim();
+    if (ctx.session.scratch) delete ctx.session.scratch.adminLimitTarget;
+    const id = BigInt(limitTarget);
+    const limit = t === "-" ? null : (/^\d+$/.test(t) ? Number(t) : null);
+    if (t !== "-" && limit === null) { await ctx.reply("❌ Faqat raqam yoki <code>-</code>."); return; }
+    await prisma.user.update({ where: { id }, data: { channelLimit: limit } }).catch(() => null);
+    setAdminChannelLimit(id, limit);
+    await ctx.reply(`✅ Kanal limiti: <b>${limit === null ? "cheksiz" : limit}</b>`);
+    return;
   }
 
-  if (action === "addById") {
-    if (!/^\d+$/.test(text)) {
-      await ctx.reply("❌ ID faqat raqam bo'lishi kerak.");
+  // ID / username qo'shish
+  if (ctx.session.scratch?.adminAction !== "add") return next();
+  const text = ctx.message.text.trim();
+  if (text.startsWith("/")) { if (ctx.session.scratch) delete ctx.session.scratch.adminAction; return next(); }
+
+  let target: User | null = null;
+  if (/^\d+$/.test(text)) {
+    const saved = await grantAdmin(BigInt(text));
+    if (!saved) { await ctx.reply("❌ Bu owner — qayta admin qilinmaydi."); return; }
+    target = saved;
+  } else {
+    const username = text.replace(/^@/, "").trim();
+    if (!username) { await ctx.reply("❌ Bo'sh."); return; }
+    const found = await prisma.user.findFirst({
+      where: { username: { equals: username, mode: "insensitive" } },
+    });
+    if (!found) {
+      await ctx.reply(`❌ <b>@${e.escapeHtml(username)}</b> topilmadi.\nAvval u botga /start bosgan bo'lishi kerak, yoki ID orqali qo'shing.`);
       return;
     }
-
-    const user = await grantAdmin(BigInt(text));
-    clearAdminAction(ctx);
-    await ctx.reply(`${ce("check")} Admin qo'shildi: <b>${e.escapeHtml(userLabel(user))}</b>`);
-    await renderAdminMenu(ctx);
-    return;
+    target = await grantAdmin(found.id);
+    if (!target) { await ctx.reply("❌ Bu owner — qayta admin qilinmaydi."); return; }
   }
 
-  const username = text.replace(/^@/, "").trim();
-  if (!username) {
-    await ctx.reply("❌ Username bo'sh bo'lmasin.");
-    return;
-  }
-
-  const user = await prisma.user.findFirst({
-    where: { username: { equals: username, mode: "insensitive" } },
-  });
-
-  if (!user) {
-    await ctx.reply(
-      `❌ <b>@${e.escapeHtml(username)}</b> bot foydalanuvchilari ichidan topilmadi.\n` +
-        `Avval u botga /start bosgan bo'lishi kerak yoki ID orqali qo'shing.`
-    );
-    return;
-  }
-
-  const saved = await grantAdmin(user.id);
-  clearAdminAction(ctx);
-  await ctx.reply(`${ce("check")} Admin qo'shildi: <b>${e.escapeHtml(userLabel(saved))}</b>`);
+  if (ctx.session.scratch) delete ctx.session.scratch.adminAction;
+  await ctx.reply(`✅ Admin qo'shildi: <b>${e.escapeHtml(userLabel(target))}</b>`);
   await renderAdminMenu(ctx);
 });

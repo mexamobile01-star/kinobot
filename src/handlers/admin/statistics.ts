@@ -1,5 +1,6 @@
 import { Composer } from "grammy";
 import { prisma } from "../../prisma.js";
+import { adminCan } from "../../config.js";
 import { ce, e } from "../../utils/emoji.js";
 import { ADMIN_MENU_BUTTONS } from "../../utils/keyboard.js";
 import type { MyContext } from "../../types.js";
@@ -7,6 +8,7 @@ import type { MyContext } from "../../types.js";
 export const statisticsHandler = new Composer<MyContext>();
 
 statisticsHandler.hears(ADMIN_MENU_BUTTONS.stats, async (ctx) => {
+  if (!adminCan(ctx.from?.id ?? 0, "stats")) return;
   const [
     users,
     blocked,

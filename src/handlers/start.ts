@@ -1,6 +1,6 @@
-import { Composer } from "grammy";
+import { Composer, InlineKeyboard } from "grammy";
 import { prisma } from "../prisma.js";
-import { isAdmin, isOwner } from "../config.js";
+import { isAdmin } from "../config.js";
 import { adminMenuKeyboard, userMenuKeyboard } from "../utils/keyboard.js";
 import { ensureSubscribed, getUnsubscribedChannels } from "../utils/subscription.js";
 import { getBool, KEYS } from "../utils/settings.js";
@@ -24,6 +24,14 @@ async function deliverMovieByCode(ctx: MyContext, code: number): Promise<boolean
   return true;
 }
 
+async function sendWelcome(ctx: MyContext) {
+  await ctx.reply(WELCOME, { reply_markup: userMenuKeyboard() });
+  await ctx.reply(
+    `<tg-emoji emoji-id="5429571366384842791">🔎</tg-emoji> Do'stlaringiz chatida ham qidiring:`,
+    { reply_markup: new InlineKeyboard().switchInline("Inline qidiruv", "") }
+  );
+}
+
 startHandler.command("start", async (ctx) => {
   const uid = ctx.from!.id;
   const payload = (ctx.match ?? "").toString().trim();
@@ -41,7 +49,7 @@ startHandler.command("start", async (ctx) => {
   // Admin — qisqa xabar + knopkalar
   if (isAdmin(uid)) {
     await ctx.reply("<b>Admin panel</b>", {
-      reply_markup: adminMenuKeyboard(isOwner(uid)),
+      reply_markup: adminMenuKeyboard(uid),
     });
     return;
   }
@@ -62,7 +70,7 @@ startHandler.command("start", async (ctx) => {
   }
 
   // Oddiy /start — chiroyli welcome (obuna kod yozilganda tekshiriladi)
-  await ctx.reply(WELCOME, { reply_markup: userMenuKeyboard() });
+  await sendWelcome(ctx);
 });
 
 // Obuna tekshirish — yangi xabar YUBORILMAYDI, faqat popup
@@ -84,7 +92,7 @@ startHandler.callbackQuery("sub:check", async (ctx) => {
       if (ok) return;
     }
 
-    await ctx.reply(WELCOME, { reply_markup: userMenuKeyboard() });
+    await sendWelcome(ctx);
   } else {
     await ctx.answerCallbackQuery({
       text: `❌ ${blocking.length} ta kanalga hali a'zo bo'lmadingiz!`,

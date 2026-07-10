@@ -1,5 +1,5 @@
 import { Composer } from "grammy";
-import { isOwner } from "../../config.js";
+import { isOwner, adminCan } from "../../config.js";
 import { prisma } from "../../prisma.js";
 import { e } from "../../utils/emoji.js";
 import { ADMIN_MENU_BUTTONS, ibtn, BE, kb, adminMenuKeyboard } from "../../utils/keyboard.js";
@@ -44,7 +44,7 @@ function funnelMenu() {
 }
 
 funnelHandler.hears(ADMIN_MENU_BUTTONS.funnel, async (ctx) => {
-  if (!isOwner(ctx.from?.id)) return;
+  if (!adminCan(ctx.from?.id ?? 0, "funnel")) return;
   clearF(ctx);
   await ctx.reply("<b>Funnel — So'rovnomalar</b>", { reply_markup: funnelMenu() });
 });
@@ -53,7 +53,7 @@ funnelHandler.callbackQuery("fn:close", async (ctx) => {
   await ctx.answerCallbackQuery();
   clearF(ctx);
   await ctx.deleteMessage().catch(() => {});
-  await ctx.reply("Admin panel:", { reply_markup: adminMenuKeyboard(isOwner(ctx.from.id)) });
+  await ctx.reply("Admin panel:", { reply_markup: adminMenuKeyboard(ctx.from.id) });
 });
 
 funnelHandler.callbackQuery("fn:menu", async (ctx) => {
@@ -287,7 +287,7 @@ funnelHandler.callbackQuery(/^fn:delconf:(\d+)$/, async (ctx) => {
 // ─── Matn kiritish (message handler) ────────────────────────────────────────
 
 funnelHandler.on("message:text", async (ctx, next) => {
-  if (!isOwner(ctx.from?.id)) return next();
+  if (!adminCan(ctx.from?.id ?? 0, "funnel")) return next();
   const f = getF(ctx);
   if (!f) return next();
 

@@ -1,7 +1,7 @@
 import { Composer } from "grammy";
 import type { Conversation } from "@grammyjs/conversations";
 import { prisma } from "../../prisma.js";
-import { config, isOwner } from "../../config.js";
+import { config, adminCan } from "../../config.js";
 import { ce, e } from "../../utils/emoji.js";
 import { ADMIN_MENU_BUTTONS, ibtn, BE, kb, cancelKeyboard, adminMenuKeyboard } from "../../utils/keyboard.js";
 import { isValidUrl, resolveButtonStyle } from "../../utils/contentButton.js";
@@ -24,6 +24,7 @@ function movieMenu() {
 }
 
 moviesHandler.hears(ADMIN_MENU_BUTTONS.movies, async (ctx) => {
+  if (!adminCan(ctx.from?.id ?? 0, "movies")) return;
   const count = await prisma.movie.count();
   await ctx.reply(
     `<tg-emoji emoji-id="${BE.movie}">🎬</tg-emoji> <b>Kino boshqaruvi</b>\n\n` +
@@ -36,7 +37,7 @@ moviesHandler.callbackQuery("mv:close", async (ctx) => {
   await ctx.answerCallbackQuery();
   await ctx.deleteMessage().catch(() => {});
   await ctx.reply("Admin panel:", {
-    reply_markup: adminMenuKeyboard(isOwner(ctx.from.id)),
+    reply_markup: adminMenuKeyboard(ctx.from.id),
   });
 });
 
@@ -47,7 +48,7 @@ moviesHandler.callbackQuery("mv:add", async (ctx) => {
 
 // ============ QO'SHISH (conversation) ============
 export async function addMovie(conversation: Conversation<MyContext>, ctx: MyContext) {
-  const owner = isOwner(ctx.from?.id);
+  const ownerId = ctx.from?.id;
 
   await ctx.reply(
     `${ce("film")} <b>Yangi kino qo'shish</b>\n\n1️⃣ Kino <b>videosini</b> yuboring.`,
@@ -56,10 +57,10 @@ export async function addMovie(conversation: Conversation<MyContext>, ctx: MyCon
 
   const vidCtx = await conversation.wait();
   if (isCancel(vidCtx.message?.text))
-    return vidCtx.reply("❌ Bekor qilindi.", { reply_markup: adminMenuKeyboard(owner) });
+    return vidCtx.reply("❌ Bekor qilindi.", { reply_markup: adminMenuKeyboard(ownerId) });
   const video = vidCtx.message?.video;
   if (!video)
-    return vidCtx.reply("❌ Bu video emas.", { reply_markup: adminMenuKeyboard(owner) });
+    return vidCtx.reply("❌ Bu video emas.", { reply_markup: adminMenuKeyboard(ownerId) });
   const fileId   = video.file_id;
   const duration = video.duration ?? null;
 
@@ -68,7 +69,7 @@ export async function addMovie(conversation: Conversation<MyContext>, ctx: MyCon
   while (true) {
     const c = await conversation.wait();
     if (isCancel(c.message?.text))
-      return c.reply("❌ Bekor qilindi.", { reply_markup: adminMenuKeyboard(owner) });
+      return c.reply("❌ Bekor qilindi.", { reply_markup: adminMenuKeyboard(ownerId) });
     const t = c.message?.text?.trim() ?? "";
     if (!/^\d+$/.test(t)) { await c.reply("❌ Faqat raqam."); continue; }
     code = Number(t);
@@ -80,13 +81,13 @@ export async function addMovie(conversation: Conversation<MyContext>, ctx: MyCon
   await ctx.reply("3️⃣ Kino <b>nomini</b> kiriting.");
   const titleCtx = await conversation.wait();
   if (isCancel(titleCtx.message?.text))
-    return titleCtx.reply("❌ Bekor qilindi.", { reply_markup: adminMenuKeyboard(owner) });
+    return titleCtx.reply("❌ Bekor qilindi.", { reply_markup: adminMenuKeyboard(ownerId) });
   const title = titleCtx.message?.text?.trim() || "Nomsiz";
 
   await ctx.reply("4️⃣ Kino <b>janrini</b> kiriting. Masalan: <code>Jangari, Drama</code>");
   const genreCtx = await conversation.wait();
   if (isCancel(genreCtx.message?.text))
-    return genreCtx.reply("❌ Bekor qilindi.", { reply_markup: adminMenuKeyboard(owner) });
+    return genreCtx.reply("❌ Bekor qilindi.", { reply_markup: adminMenuKeyboard(ownerId) });
   const genre = genreCtx.message?.text?.trim() || null;
 
   // 5️⃣ Qisqa (treyler) video — o'tkazib yuborish mumkin
@@ -100,7 +101,7 @@ export async function addMovie(conversation: Conversation<MyContext>, ctx: MyCon
   while (true) {
     const sc = await conversation.wait();
     if (isCancel(sc.message?.text))
-      return sc.reply("❌ Bekor qilindi.", { reply_markup: adminMenuKeyboard(owner) });
+      return sc.reply("❌ Bekor qilindi.", { reply_markup: adminMenuKeyboard(ownerId) });
     if (sc.message?.text?.trim() === "-") { shortFileId = null; break; }
     if (sc.message?.video) { shortFileId = sc.message.video.file_id; break; }
     await sc.reply("❌ Video yuboring yoki o'tkazib yuborish uchun <code>-</code> yozing.");
@@ -146,7 +147,7 @@ export async function addMovie(conversation: Conversation<MyContext>, ctx: MyCon
     `${ce("star")} Kod: <code>${movie.code}</code>\n` +
     (baseMsgId ? `📦 Baza kanalga tashlandi.\n` : `ℹ️ Baza kanal sozlanmagan.\n`) +
     shortStatus,
-    { reply_markup: adminMenuKeyboard(owner) }
+    { reply_markup: adminMenuKeyboard(ownerId) }
   );
 }
 

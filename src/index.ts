@@ -3,7 +3,8 @@ import { run } from "@grammyjs/runner";
 import { webhookCallback } from "grammy";
 import { bot } from "./bot.js";
 import { prisma } from "./prisma.js";
-import { addAdminId, config } from "./config.js";
+import { addAdminId, config, setAdminPerms, setAdminChannelLimit } from "./config.js";
+import { parsePerms } from "./utils/permissions.js";
 import { trackUser } from "./middlewares/user.js";
 
 import { adminHandler } from "./handlers/admin/index.js";
@@ -87,9 +88,13 @@ async function main() {
 
   const dbAdmins = await prisma.user.findMany({
     where: { isAdmin: true },
-    select: { id: true },
+    select: { id: true, permissions: true, channelLimit: true },
   });
-  for (const admin of dbAdmins) addAdminId(admin.id);
+  for (const admin of dbAdmins) {
+    addAdminId(admin.id);
+    setAdminPerms(admin.id, parsePerms(admin.permissions));
+    setAdminChannelLimit(admin.id, admin.channelLimit ?? null);
+  }
 
   // Avtomatik backup rejalashtiruvchi
   startAutoBackup(bot);

@@ -1,5 +1,5 @@
 import { Composer } from "grammy";
-import { isOwner } from "../../config.js";
+import { isOwner, adminCan } from "../../config.js";
 import { prisma } from "../../prisma.js";
 import { ce, e } from "../../utils/emoji.js";
 import { ADMIN_MENU_BUTTONS, adminMenuKeyboard, ibtn, BE, kb } from "../../utils/keyboard.js";
@@ -72,7 +72,7 @@ function broadcastMenu() {
 }
 
 broadcastHandler.hears(ADMIN_MENU_BUTTONS.broadcast, async (ctx) => {
-  if (!isOwner(ctx.from?.id)) return;
+  if (!adminCan(ctx.from?.id ?? 0, "broadcast")) return;
   clearBcast(ctx);
   await ctx.reply(
     `${ce("fire")} <b>Xabar yuborish</b>\n\nKimga yubormoqchisiz?`,
@@ -84,7 +84,7 @@ broadcastHandler.callbackQuery("bc:close", async (ctx) => {
   await ctx.answerCallbackQuery();
   clearBcast(ctx);
   await ctx.deleteMessage().catch(() => {});
-  await ctx.reply("Admin panel:", { reply_markup: adminMenuKeyboard(isOwner(ctx.from.id)) });
+  await ctx.reply("Admin panel:", { reply_markup: adminMenuKeyboard(ctx.from.id) });
 });
 
 broadcastHandler.callbackQuery("bc:menu", async (ctx) => {
@@ -209,7 +209,7 @@ broadcastHandler.callbackQuery(/^bc:survopt:(\d+):(\d+)$/, async (ctx) => {
 // ─── Xabar shabloni qabul qilish ─────────────────────────────────────────────
 
 broadcastHandler.on("message", async (ctx, next) => {
-  if (!isOwner(ctx.from?.id)) return next();
+  if (!adminCan(ctx.from?.id ?? 0, "broadcast")) return next();
   const bcast = getBcast(ctx);
   if (!bcast) return next();
 

@@ -1,5 +1,5 @@
 import { Composer } from "grammy";
-import { isOwner } from "../../config.js";
+import { isOwner, adminCan } from "../../config.js";
 import { prisma } from "../../prisma.js";
 import { e } from "../../utils/emoji.js";
 import { ADMIN_MENU_BUTTONS, adminMenuKeyboard, ibtn, BE, kb } from "../../utils/keyboard.js";
@@ -10,7 +10,7 @@ export const referralsHandler = new Composer<MyContext>();
 const PAGE = 10;
 
 referralsHandler.hears(ADMIN_MENU_BUTTONS.referrals, async (ctx) => {
-  if (!isOwner(ctx.from?.id)) return;
+  if (!adminCan(ctx.from?.id ?? 0, "referrals")) return;
   await renderTop(ctx, 0, false);
 });
 
@@ -77,7 +77,7 @@ referralsHandler.callbackQuery(/^ref:page:(\d+)$/, async (ctx) => {
 referralsHandler.callbackQuery("ref:close", async (ctx) => {
   await ctx.answerCallbackQuery();
   await ctx.deleteMessage().catch(() => {});
-  await ctx.reply("Admin panel:", { reply_markup: adminMenuKeyboard(isOwner(ctx.from.id)) });
+  await ctx.reply("Admin panel:", { reply_markup: adminMenuKeyboard(ctx.from.id) });
 });
 
 referralsHandler.callbackQuery(/^ref:view:(\d+)$/, async (ctx) => {
@@ -117,7 +117,7 @@ referralsHandler.callbackQuery(/^ref:msg:(\d+)$/, async (ctx) => {
 });
 
 referralsHandler.on("message", async (ctx, next) => {
-  if (!isOwner(ctx.from?.id)) return next();
+  if (!adminCan(ctx.from?.id ?? 0, "referrals")) return next();
   const target = ctx.session.scratch?.refMsgTarget as string | undefined;
   if (!target) return next();
 
