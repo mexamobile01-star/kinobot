@@ -28,18 +28,54 @@ interface AiListItem {
 
 const AI_EXIT = "❌ Chiqish";
 
-/** Mavjud kinolar va seriallar ro'yxatidan AI konteksti (m/s prefiksli kodlar) */
-async function buildContext(): Promise<string> {
-  const [movies, serials] = await Promise.all([
+type MovieCtx  = { code: number; title: string; genre: string | null; year: number | null; views: number };
+type SerialCtx = { code: number; title: string; genre: string | null; year: number | null };
+
+/**
+ * Foydalanuvchi so'roviga mos + mashhur kinolar/seriallardan QISQA kontekst
+ * tuzadi (butun katalog emas — Groq kunlik token limiti tez tugamasligi uchun).
+ */
+async function buildContext(query: string): Promise<string> {
+  const kw = query.trim();
+  const keywordWhere = kw.length >= 2
+    ? {
+        OR: [
+          { title: { contains: kw, mode: "insensitive" as const } },
+          { genre: { contains: kw, mode: "insensitive" as const } },
+        ],
+      }
+    : undefined;
+
+  const [matchedMovies, popularMovies, matchedSerials, popularSerials] = await Promise.all([
+    keywordWhere
+      ? prisma.movie.findMany({
+          where: keywordWhere, take: 15, orderBy: { views: "desc" },
+          select: { code: true, title: true, genre: true, year: true, views: true },
+        })
+      : Promise.resolve([] as MovieCtx[]),
     prisma.movie.findMany({
-      orderBy: { views: "desc" }, take: 250,
+      orderBy: { views: "desc" }, take: 15,
       select: { code: true, title: true, genre: true, year: true, views: true },
     }),
+    keywordWhere
+      ? prisma.serial.findMany({
+          where: keywordWhere, take: 10, orderBy: { views: "desc" },
+          select: { code: true, title: true, genre: true, year: true },
+        })
+      : Promise.resolve([] as SerialCtx[]),
     prisma.serial.findMany({
-      orderBy: { views: "desc" }, take: 100,
+      orderBy: { views: "desc" }, take: 10,
       select: { code: true, title: true, genre: true, year: true },
     }),
   ]);
+
+  const movieMap = new Map<number, MovieCtx>();
+  for (const m of [...matchedMovies, ...popularMovies]) movieMap.set(m.code, m);
+  const serialMap = new Map<number, SerialCtx>();
+  for (const s of [...matchedSerials, ...popularSerials]) serialMap.set(s.code, s);
+
+  const movies  = [...movieMap.values()];
+  const serials = [...serialMap.values()];
 
   const mv = movies.length
     ? movies.map((m) => `- ${m.title} (kod: m${m.code}${m.genre ? `, ${m.genre}` : ""}${m.year ? `, ${m.year}` : ""}, ${m.views}👁)`).join("\n")
@@ -48,7 +84,8 @@ async function buildContext(): Promise<string> {
     ? serials.map((s) => `- ${s.title} (kod: s${s.code}${s.genre ? `, ${s.genre}` : ""}) [serial]`).join("\n")
     : "yo'q";
 
-  return `KINOLAR:\n${mv}\n\nSERIALLAR:\n${sr}`;
+  return `KINOLAR:\n${mv}\n\nSERIALLAR:\n${sr}\n\n(Bu — so'rovingizga mos + eng mashhur kontent. Boshqasini ` +
+    `so'rasangiz, mos kelmasa "ro'yxatda yo'q" deb ayt.)`;
 }
 
 /** Foydalanuvchi haqida AI uchun qisqa profil matni */
@@ -256,7 +293,7 @@ aiUserHandler.on("message:text", async (ctx, next) => {
   }
 
   await ctx.replyWithChatAction("typing").catch(() => {});
-  const context = await buildContext();
+  const context = await buildContext(text);
   const answer = await askGemini(text, systemPrompt(context, buildUserInfo(ctx)));
 
   if (!answer) {
