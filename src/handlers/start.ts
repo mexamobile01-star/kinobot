@@ -2,8 +2,8 @@ import { Composer } from "grammy";
 import { prisma } from "../prisma.js";
 import { isAdmin } from "../config.js";
 import { adminMenuKeyboard, userMenuKeyboard } from "../utils/keyboard.js";
-import { ensureSubscribed, getUnsubscribedChannels } from "../utils/subscription.js";
-import { getBool, KEYS } from "../utils/settings.js";
+import { getUnsubscribedChannels } from "../utils/subscription.js";
+import { checkContentAccess } from "../utils/access.js";
 import { attachReferrer, confirmReferral } from "../utils/referral.js";
 import { sendMovie } from "../services/media.js";
 import type { MyContext } from "../types.js";
@@ -58,19 +58,16 @@ startHandler.command("start", async (ctx) => {
     return;
   }
 
-  // Deep-link kino — bu yerda majburiy obunani tekshiramiz
+  // Deep-link kino — premium/majburiy obuna/limit tekshiruvi
   if (pendingMovieCode !== null) {
-    const forceSub = await getBool(KEYS.forceSubEnabled, true);
-    if (forceSub) {
-      const ok = await ensureSubscribed(ctx, uid);
-      if (!ok) {
-        ctx.session.scratch = { ...(ctx.session.scratch ?? {}), pendingMovieCode };
-        return;
-      }
+    const ok = await checkContentAccess(ctx);
+    if (!ok) {
+      ctx.session.scratch = { ...(ctx.session.scratch ?? {}), pendingMovieCode };
+      return;
     }
     await confirmReferral(ctx, uid);
-    const ok = await deliverMovieByCode(ctx, pendingMovieCode);
-    if (ok) return;
+    const delivered = await deliverMovieByCode(ctx, pendingMovieCode);
+    if (delivered) return;
   }
 
   // Oddiy /start — chiroyli welcome (obuna kod yozilganda tekshiriladi)

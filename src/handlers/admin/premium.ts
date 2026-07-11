@@ -1,0 +1,355 @@
+import { Composer } from "grammy";
+import { prisma } from "../../prisma.js";
+import { adminCan } from "../../config.js";
+import { e } from "../../utils/emoji.js";
+import { ADMIN_MENU_BUTTONS, adminMenuKeyboard, ibtn, kb, BE } from "../../utils/keyboard.js";
+import { getBool, setBool, getSetting, setSetting, KEYS } from "../../utils/settings.js";
+import { grantPremium } from "../../utils/premium.js";
+import type { MyContext } from "../../types.js";
+
+export const premiumAdminHandler = new Composer<MyContext>();
+
+function can(ctx: MyContext): boolean {
+  return adminCan(ctx.from?.id ?? 0, "premium");
+}
+
+// ─── Asosiy menyu ────────────────────────────────────────────────────────────
+async function menuData() {
+  const [enabled, pending, premiumCount] = await Promise.all([
+    getBool(KEYS.premiumEnabled, false),
+    prisma.payment.count({ where: { status: "pending" } }),
+    prisma.user.count({ where: { premiumUntil: { gt: new Date() } } }),
+  ]);
+
+  const text =
+    `<tg-emoji emoji-id="5258093637450866522">💎</tg-emoji> <b>Premium boshqaruvi</b>\n\n` +
+    `Tizim: <b>${enabled ? "🟢 Yoqilgan" : "🔴 O'chirilgan"}</b>\n` +
+    `Premium foydalanuvchilar: <b>${premiumCount}</b>\n` +
+    `Kutilayotgan to'lovlar: <b>${pending}</b>`;
+
+  const markup = kb(
+    [ibtn(`💳 Kutilayotgan to'lovlar (${pending})`, "prm:pending:0", "primary")],
+    [ibtn("🏷 Tariflar", "prm:tariffs", "primary"), ibtn("⚙️ Sozlamalar", "prm:settings", "primary")],
+    [ibtn("🎁 Qo'lda premium berish", "prm:grant", "success")],
+    [ibtn("👥 Premium foydalanuvchilar", "prm:users:0", "primary")],
+    [ibtn("Menyuga qaytish", "prm:close", undefined, BE.backMenu)],
+  );
+  return { text, markup };
+}
+
+premiumAdminHandler.hears(ADMIN_MENU_BUTTONS.premium, async (ctx) => {
+  if (!can(ctx)) return;
+  const { text, markup } = await menuData();
+  await ctx.reply(text, { reply_markup: markup });
+});
+
+premiumAdminHandler.callbackQuery("prm:menu", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const { text, markup } = await menuData();
+  await ctx.editMessageText(text, { reply_markup: markup }).catch(() => {});
+});
+
+premiumAdminHandler.callbackQuery("prm:close", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await ctx.deleteMessage().catch(() => {});
+  await ctx.reply("Admin panel:", { reply_markup: adminMenuKeyboard(ctx.from.id) });
+});
+
+// ─── Kutilayotgan to'lovlar ──────────────────────────────────────────────────
+premiumAdminHandler.callbackQuery(/^prm:pending:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const page = Number(ctx.match[1]);
+  const PAGE = 8;
+  const total = await prisma.payment.count({ where: { status: "pending" } });
+  const items = await prisma.payment.findMany({
+    where: { status: "pending" }, orderBy: { createdAt: "asc" }, skip: page * PAGE, take: PAGE,
+  });
+
+  if (items.length === 0) {
+    await ctx.editMessageText("✅ Kutilayotgan to'lov yo'q.", {
+      reply_markup: kb([ibtn("Orqaga", "prm:menu", undefined, BE.backMenu)]),
+    }).catch(() => {});
+    return;
+  }
+
+  const rows = items.map((p) => [
+    ibtn(`#${p.id} · ${p.tariffLabel} · ${p.amount.toLocaleString("ru-RU")}`, `prm:pay:${p.id}`, "primary"),
+  ]);
+  const pages = Math.ceil(total / PAGE);
+  const nav: ReturnType<typeof ibtn>[] = [];
+  if (page > 0) nav.push(ibtn("⬅️", `prm:pending:${page - 1}`));
+  if (pages > 1) nav.push(ibtn(`${page + 1}/${pages}`, "noop:prm"));
+  if (page < pages - 1) nav.push(ibtn("➡️", `prm:pending:${page + 1}`));
+  if (nav.length) rows.push(nav);
+  rows.push([ibtn("Orqaga", "prm:menu", undefined, BE.backMenu)]);
+
+  await ctx.editMessageText(`💳 <b>Kutilayotgan to'lovlar</b> (${total}):`, { reply_markup: kb(...rows) }).catch(() => {});
+});
+
+premiumAdminHandler.callbackQuery("noop:prm", (ctx) => ctx.answerCallbackQuery());
+
+premiumAdminHandler.callbackQuery(/^prm:pay:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await prisma.payment.findUnique({ where: { id: Number(ctx.match[1]) } });
+  if (!p) { await ctx.reply("Topilmadi."); return; }
+  const u = await prisma.user.findUnique({ where: { id: p.userId } });
+  const uname = u?.username ? `@${u.username}` : "—";
+
+  const text =
+    `💳 <b>To'lov #${p.id}</b>\n\n` +
+    `Foydalanuvchi: <b>${e.escapeHtml(u?.firstName ?? "—")}</b> ${uname}\n` +
+    `ID: <code>${p.userId}</code>\n` +
+    `Tarif: <b>${e.escapeHtml(p.tariffLabel)}</b> — ${p.amount.toLocaleString("ru-RU")} so'm (${p.days} kun)\n` +
+    `Holat: <b>${p.status}</b>\n` +
+    `Sana: ${p.createdAt.toLocaleString("ru-RU")}`;
+
+  const rows = p.status === "pending"
+    ? [
+        [ibtn("✅ Tasdiqlash", `prm:approve:${p.id}`, "success"), ibtn("❌ Rad etish", `prm:reject:${p.id}`, "danger")],
+        [ibtn("Orqaga", "prm:pending:0", undefined, BE.backMenu)],
+      ]
+    : [[ibtn("Orqaga", "prm:pending:0", undefined, BE.backMenu)]];
+
+  // Chek rasmini alohida yuboramiz
+  if (p.proofFileId) {
+    await ctx.editMessageText(text, { reply_markup: kb(...rows) }).catch(() => {});
+    await ctx.replyWithPhoto(p.proofFileId, { caption: `Chek — to'lov #${p.id}` }).catch(() => {});
+  } else {
+    await ctx.editMessageText(text + `\n\n⚠️ Chek biriktirilmagan.`, { reply_markup: kb(...rows) }).catch(() => {});
+  }
+});
+
+premiumAdminHandler.callbackQuery(/^prm:approve:(\d+)$/, async (ctx) => {
+  const p = await prisma.payment.findUnique({ where: { id: Number(ctx.match[1]) } });
+  if (!p || p.status !== "pending") { await ctx.answerCallbackQuery({ text: "Allaqachon ko'rib chiqilgan.", show_alert: true }); return; }
+
+  const until = await grantPremium(p.userId, p.days);
+  await prisma.payment.update({
+    where: { id: p.id },
+    data: { status: "approved", reviewedById: BigInt(ctx.from.id), reviewedAt: new Date() },
+  });
+  await ctx.answerCallbackQuery({ text: "✅ Tasdiqlandi, premium yoqildi.", show_alert: true });
+  await ctx.editMessageReplyMarkup({ reply_markup: kb([ibtn("Orqaga", "prm:pending:0", undefined, BE.backMenu)]) }).catch(() => {});
+
+  await ctx.api.sendMessage(
+    Number(p.userId),
+    `<tg-emoji emoji-id="5258093637450866522">💎</tg-emoji> <b>Premium yoqildi!</b>\n\n` +
+    `To'lovingiz tasdiqlandi. Premium <b>${until.toLocaleDateString("ru-RU")}</b> gacha amal qiladi.\n` +
+    `Endi cheksiz va obunasiz foydalanishingiz mumkin! 🎉`,
+    { parse_mode: "HTML" }
+  ).catch(() => null);
+});
+
+premiumAdminHandler.callbackQuery(/^prm:reject:(\d+)$/, async (ctx) => {
+  const p = await prisma.payment.findUnique({ where: { id: Number(ctx.match[1]) } });
+  if (!p || p.status !== "pending") { await ctx.answerCallbackQuery({ text: "Allaqachon ko'rib chiqilgan.", show_alert: true }); return; }
+  await prisma.payment.update({
+    where: { id: p.id },
+    data: { status: "rejected", reviewedById: BigInt(ctx.from.id), reviewedAt: new Date() },
+  });
+  await ctx.answerCallbackQuery({ text: "❌ Rad etildi.", show_alert: true });
+  await ctx.editMessageReplyMarkup({ reply_markup: kb([ibtn("Orqaga", "prm:pending:0", undefined, BE.backMenu)]) }).catch(() => {});
+  await ctx.api.sendMessage(
+    Number(p.userId),
+    `❌ To'lovingiz (#${p.id}) tasdiqlanmadi. Savol bo'lsa admin bilan bog'laning.`,
+  ).catch(() => null);
+});
+
+// ─── Tariflar ────────────────────────────────────────────────────────────────
+premiumAdminHandler.callbackQuery("prm:tariffs", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const tariffs = await prisma.tariff.findMany({ orderBy: { sortOrder: "asc" } });
+  const lines = tariffs.length
+    ? tariffs.map((t) => `${t.isActive ? "🟢" : "🔴"} <b>${e.escapeHtml(t.label)}</b> — ${t.price.toLocaleString("ru-RU")} so'm · ${t.days} kun`).join("\n")
+    : "Hozircha tarif yo'q.";
+  const rows = tariffs.map((t) => [ibtn(`🗑 ${t.label}`, `prm:tdel:${t.id}`, "danger")]);
+  rows.push([ibtn("➕ Tarif qo'shish", "prm:tadd", "success")]);
+  rows.push([ibtn("Orqaga", "prm:menu", undefined, BE.backMenu)]);
+  await ctx.editMessageText(`🏷 <b>Tariflar</b>\n\n${lines}`, { reply_markup: kb(...rows) }).catch(() => {});
+});
+
+premiumAdminHandler.callbackQuery("prm:tadd", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), prmAddTariff: true };
+  await ctx.reply(
+    `➕ <b>Yangi tarif</b>\n\nQuyidagi formatda yuboring:\n<code>Nom | kun | narx</code>\n\n` +
+    `Masalan: <code>1 oy | 30 | 15000</code>`
+  );
+});
+
+premiumAdminHandler.callbackQuery(/^prm:tdel:(\d+)$/, async (ctx) => {
+  await prisma.tariff.delete({ where: { id: Number(ctx.match[1]) } }).catch(() => null);
+  await ctx.answerCallbackQuery({ text: "O'chirildi." });
+  // Ro'yxatni yangilash
+  const tariffs = await prisma.tariff.findMany({ orderBy: { sortOrder: "asc" } });
+  const lines = tariffs.length
+    ? tariffs.map((t) => `${t.isActive ? "🟢" : "🔴"} <b>${e.escapeHtml(t.label)}</b> — ${t.price.toLocaleString("ru-RU")} so'm · ${t.days} kun`).join("\n")
+    : "Hozircha tarif yo'q.";
+  const rows = tariffs.map((t) => [ibtn(`🗑 ${t.label}`, `prm:tdel:${t.id}`, "danger")]);
+  rows.push([ibtn("➕ Tarif qo'shish", "prm:tadd", "success")]);
+  rows.push([ibtn("Orqaga", "prm:menu", undefined, BE.backMenu)]);
+  await ctx.editMessageText(`🏷 <b>Tariflar</b>\n\n${lines}`, { reply_markup: kb(...rows) }).catch(() => {});
+});
+
+// ─── Sozlamalar ──────────────────────────────────────────────────────────────
+async function settingsData() {
+  const [enabled, freeReq, freeDays, payInfo] = await Promise.all([
+    getBool(KEYS.premiumEnabled, false),
+    getSetting(KEYS.freeRequestLimit, "0"),
+    getSetting(KEYS.freeDays, "0"),
+    getSetting(KEYS.paymentInfo, ""),
+  ]);
+  const text =
+    `⚙️ <b>Premium sozlamalari</b>\n\n` +
+    `Tizim: <b>${enabled ? "🟢 Yoqilgan" : "🔴 O'chirilgan"}</b>\n` +
+    `Bepul so'rovlar: <b>${freeReq}</b> (0 = cheksiz)\n` +
+    `Bepul kunlar: <b>${freeDays}</b> (0 = cheksiz)\n` +
+    `To'lov ma'lumoti: ${payInfo ? "✅ sozlangan" : "❌ yo'q"}\n\n` +
+    `<i>Bepul chegara: qaysi biri (so'rov yoki kun) birinchi tugasa premium so'raladi.</i>`;
+  const markup = kb(
+    [ibtn(enabled ? "🔴 Tizimni o'chirish" : "🟢 Tizimni yoqish", "prm:toggle", enabled ? "danger" : "success")],
+    [ibtn("✏️ Bepul so'rovlar soni", "prm:setfreq", "primary"), ibtn("✏️ Bepul kunlar", "prm:setfdays", "primary")],
+    [ibtn("💳 To'lov ma'lumotini o'zgartirish", "prm:setpay", "primary")],
+    [ibtn("Orqaga", "prm:menu", undefined, BE.backMenu)],
+  );
+  return { text, markup };
+}
+
+premiumAdminHandler.callbackQuery("prm:settings", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const { text, markup } = await settingsData();
+  await ctx.editMessageText(text, { reply_markup: markup }).catch(() => {});
+});
+
+premiumAdminHandler.callbackQuery("prm:toggle", async (ctx) => {
+  const cur = await getBool(KEYS.premiumEnabled, false);
+  await setBool(KEYS.premiumEnabled, !cur);
+  await ctx.answerCallbackQuery({ text: !cur ? "🟢 Premium tizimi yoqildi" : "🔴 O'chirildi", show_alert: true });
+  const { text, markup } = await settingsData();
+  await ctx.editMessageText(text, { reply_markup: markup }).catch(() => {});
+});
+
+premiumAdminHandler.callbackQuery("prm:setfreq", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), prmField: "freq" };
+  await ctx.reply("Bepul so'rovlar sonini yuboring (0 = cheksiz):");
+});
+premiumAdminHandler.callbackQuery("prm:setfdays", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), prmField: "fdays" };
+  await ctx.reply("Bepul kunlar sonini yuboring (0 = cheksiz):");
+});
+premiumAdminHandler.callbackQuery("prm:setpay", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), prmField: "pay" };
+  await ctx.reply("To'lov ma'lumotini yuboring (karta raqami, egasi va ko'rsatma):");
+});
+
+// ─── Qo'lda premium berish ───────────────────────────────────────────────────
+premiumAdminHandler.callbackQuery("prm:grant", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), prmField: "grant" };
+  await ctx.reply(
+    `🎁 <b>Qo'lda premium berish</b>\n\nFormat: <code>foydalanuvchi_ID kun</code>\n` +
+    `Masalan: <code>123456789 30</code>`
+  );
+});
+
+// ─── Premium foydalanuvchilar ────────────────────────────────────────────────
+premiumAdminHandler.callbackQuery(/^prm:users:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const page = Number(ctx.match[1]);
+  const PAGE = 10;
+  const now = new Date();
+  const total = await prisma.user.count({ where: { premiumUntil: { gt: now } } });
+  const users = await prisma.user.findMany({
+    where: { premiumUntil: { gt: now } }, orderBy: { premiumUntil: "desc" }, skip: page * PAGE, take: PAGE,
+  });
+
+  const lines = users.length
+    ? users.map((u, i) => {
+        const name = u.firstName || (u.username ? `@${u.username}` : `ID ${u.id}`);
+        return `${page * PAGE + i + 1}. <b>${e.escapeHtml(name)}</b> — ${u.premiumUntil!.toLocaleDateString("ru-RU")} gacha`;
+      }).join("\n")
+    : "Premium foydalanuvchi yo'q.";
+
+  const pages = Math.max(1, Math.ceil(total / PAGE));
+  const nav: ReturnType<typeof ibtn>[] = [];
+  if (page > 0) nav.push(ibtn("⬅️", `prm:users:${page - 1}`));
+  if (pages > 1) nav.push(ibtn(`${page + 1}/${pages}`, "noop:prm"));
+  if (page < pages - 1) nav.push(ibtn("➡️", `prm:users:${page + 1}`));
+  const rows = nav.length ? [nav] : [];
+  rows.push([ibtn("Orqaga", "prm:menu", undefined, BE.backMenu)]);
+
+  await ctx.editMessageText(`👥 <b>Premium foydalanuvchilar</b> (${total}):\n\n${lines}`, { reply_markup: kb(...rows) }).catch(() => {});
+});
+
+// ─── Matn kiritish (tariflar/sozlamalar/grant) ───────────────────────────────
+premiumAdminHandler.on("message:text", async (ctx, next) => {
+  if (!can(ctx)) return next();
+  const s = ctx.session.scratch;
+  if (!s) return next();
+
+  const text = ctx.message.text.trim();
+
+  if (s.prmAddTariff) {
+    delete s.prmAddTariff;
+    const parts = text.split("|").map((x) => x.trim());
+    const label = parts[0];
+    const days = parseInt(parts[1], 10);
+    const price = parseInt(parts[2], 10);
+    if (!label || Number.isNaN(days) || Number.isNaN(price)) {
+      await ctx.reply("❌ Format xato. Namuna: <code>1 oy | 30 | 15000</code>");
+      return;
+    }
+    const count = await prisma.tariff.count();
+    await prisma.tariff.create({ data: { label: label.slice(0, 40), days, price, sortOrder: count } });
+    await ctx.reply(`✅ Tarif qo'shildi: <b>${e.escapeHtml(label)}</b> — ${price.toLocaleString("ru-RU")} so'm · ${days} kun`);
+    return;
+  }
+
+  if (s.prmField === "freq") {
+    delete s.prmField;
+    const n = parseInt(text, 10);
+    if (Number.isNaN(n) || n < 0) { await ctx.reply("❌ Faqat musbat raqam."); return; }
+    await setSetting(KEYS.freeRequestLimit, String(n));
+    await ctx.reply(`✅ Bepul so'rovlar: <b>${n}</b>`);
+    return;
+  }
+  if (s.prmField === "fdays") {
+    delete s.prmField;
+    const n = parseInt(text, 10);
+    if (Number.isNaN(n) || n < 0) { await ctx.reply("❌ Faqat musbat raqam."); return; }
+    await setSetting(KEYS.freeDays, String(n));
+    await ctx.reply(`✅ Bepul kunlar: <b>${n}</b>`);
+    return;
+  }
+  if (s.prmField === "pay") {
+    delete s.prmField;
+    await setSetting(KEYS.paymentInfo, text.slice(0, 500));
+    await ctx.reply(`✅ To'lov ma'lumoti saqlandi.`);
+    return;
+  }
+  if (s.prmField === "grant") {
+    delete s.prmField;
+    const [idStr, daysStr] = text.split(/\s+/);
+    const uid = Number(idStr);
+    const days = parseInt(daysStr, 10);
+    if (!Number.isInteger(uid) || Number.isNaN(days) || days <= 0) {
+      await ctx.reply("❌ Format: <code>ID kun</code>. Masalan: <code>123456789 30</code>");
+      return;
+    }
+    const target = await prisma.user.findUnique({ where: { id: BigInt(uid) } });
+    if (!target) { await ctx.reply("❌ Bunday foydalanuvchi bazada yo'q (botga /start bosgan bo'lishi kerak)."); return; }
+    const until = await grantPremium(BigInt(uid), days);
+    await ctx.reply(`✅ Premium berildi: <code>${uid}</code> — ${until.toLocaleDateString("ru-RU")} gacha`);
+    await ctx.api.sendMessage(
+      uid,
+      `<tg-emoji emoji-id="5258093637450866522">💎</tg-emoji> <b>Sizga Premium berildi!</b>\n\n${until.toLocaleDateString("ru-RU")} gacha amal qiladi. 🎉`,
+      { parse_mode: "HTML" }
+    ).catch(() => null);
+    return;
+  }
+
+  return next();
+});

@@ -1,10 +1,8 @@
 import { Composer } from "grammy";
 import { prisma } from "../prisma.js";
-import { isAdmin } from "../config.js";
 import { e } from "../utils/emoji.js";
 import { ibtn, kb, userMenuKeyboard, aiActiveKeyboard } from "../utils/keyboard.js";
-import { ensureSubscribed } from "../utils/subscription.js";
-import { getBool, KEYS } from "../utils/settings.js";
+import { checkContentAccess } from "../utils/access.js";
 import { aiEnabled, askAI } from "../services/ai.js";
 import { sendMovie } from "../services/media.js";
 import { sendSerialSeasons } from "./serialView.js";
@@ -144,20 +142,13 @@ function systemPrompt(context: string, userInfo: string): string {
 }
 
 aiUserHandler.hears(AI_BTN, async (ctx) => {
-  const uid = ctx.from!.id;
-
   if (!aiEnabled()) {
     await ctx.reply("🤖 AI yordamchi hozircha sozlanmagan. Keyinroq urinib ko'ring.");
     return;
   }
 
-  if (!isAdmin(uid)) {
-    const forceSub = await getBool(KEYS.forceSubEnabled, true);
-    if (forceSub) {
-      const ok = await ensureSubscribed(ctx, uid);
-      if (!ok) return;
-    }
-  }
+  // AI suhbatiga kirish — obuna/premium tekshiruvi (so'rov hisoblanmaydi)
+  if (!(await checkContentAccess(ctx, false))) return;
 
   ctx.session.scratch = { ...(ctx.session.scratch ?? {}), aiChat: true };
   await ctx.reply(
@@ -346,14 +337,8 @@ aiUserHandler.callbackQuery("noop:ai", (ctx) => ctx.answerCallbackQuery());
 
 aiUserHandler.callbackQuery(/^ai:watch:([ms]\d+)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
-  const uid = ctx.from.id;
-  if (!isAdmin(uid)) {
-    const forceSub = await getBool(KEYS.forceSubEnabled, true);
-    if (forceSub) {
-      const ok = await ensureSubscribed(ctx, uid);
-      if (!ok) return;
-    }
-  }
+  // Kino yetkazish — obuna/premium/limit tekshiruvi (so'rov hisoblanadi)
+  if (!(await checkContentAccess(ctx))) return;
   await deliverPrefixedCode(ctx, ctx.match[1]).catch(() => {});
 });
 

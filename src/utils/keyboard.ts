@@ -46,6 +46,7 @@ export const ADMIN_MENU_BUTTONS = {
   broadcast: "Xabar yuborish",
   funnel: "Funnel",
   referrals: "Referal",
+  premium: "Premium",
   admins: "Admin boshqaruvi",
   backup: "Backup",
 } as const;
@@ -86,6 +87,7 @@ const SECTION_META: { key: string; text: string; emoji: string }[] = [
   { key: "broadcast", text: ADMIN_MENU_BUTTONS.broadcast, emoji: BE.broadcast },
   { key: "funnel",    text: ADMIN_MENU_BUTTONS.funnel,    emoji: BE.trend },
   { key: "referrals", text: ADMIN_MENU_BUTTONS.referrals, emoji: BE.users },
+  { key: "premium",   text: ADMIN_MENU_BUTTONS.premium,   emoji: "5258093637450866522" },
   { key: "backup",    text: ADMIN_MENU_BUTTONS.backup,    emoji: BE.backup },
 ];
 

@@ -1,6 +1,6 @@
 // Admin bo'limlari va huquqlar
 export const SECTIONS = [
-  "stats", "channels", "movies", "serials", "broadcast", "funnel", "referrals", "backup", "ai",
+  "stats", "channels", "movies", "serials", "broadcast", "funnel", "referrals", "backup", "ai", "premium",
 ] as const;
 
 export type Section = (typeof SECTIONS)[number];
@@ -15,6 +15,7 @@ export const SECTION_LABELS: Record<Section, string> = {
   referrals: "Referal",
   backup:    "Backup",
   ai:        "AI yordamchi",
+  premium:   "Premium",
 };
 
 /** permissions stringni bo'limlar ro'yxatiga aylantiradi. null/"" = hammasi ruxsat */

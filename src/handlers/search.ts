@@ -3,9 +3,8 @@ import { prisma } from "../prisma.js";
 import { isAdmin } from "../config.js";
 import { ce, e } from "../utils/emoji.js";
 import { sendMovie } from "../services/media.js";
-import { ensureSubscribed } from "../utils/subscription.js";
+import { checkContentAccess } from "../utils/access.js";
 import { confirmReferral } from "../utils/referral.js";
-import { getBool, KEYS } from "../utils/settings.js";
 import { sendSerialSeasons } from "./serialView.js";
 import { ADMIN_MENU_BUTTONS } from "../utils/keyboard.js";
 import type { MyContext } from "../types.js";
@@ -20,16 +19,11 @@ const PANEL_TEXTS = new Set([
   "❌ Bekor qilish",
 ]);
 
-/** Majburiy obunani tekshiradi (admin bo'lmasa). false — bloklangan. */
+/** Kontent gate: premium/majburiy obuna/bepul limit. false — bloklangan. */
 async function checkAccess(ctx: MyContext): Promise<boolean> {
-  const uid = ctx.from!.id;
-  if (isAdmin(uid)) return true;
-  const forceSub = await getBool(KEYS.forceSubEnabled, true);
-  if (forceSub) {
-    const ok = await ensureSubscribed(ctx, uid);
-    if (!ok) return false;
-  }
-  await confirmReferral(ctx, uid);
+  const ok = await checkContentAccess(ctx);
+  if (!ok) return false;
+  if (!isAdmin(ctx.from!.id)) await confirmReferral(ctx, ctx.from!.id);
   return true;
 }
 

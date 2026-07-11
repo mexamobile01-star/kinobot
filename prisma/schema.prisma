@@ -23,11 +23,45 @@ model User {
   isAdmin           Boolean  @default(false)
   permissions       String?  // ruxsat etilgan bo'limlar (vergul bilan); null = hammasi
   channelLimit      Int?     // majburiy obunaga qo'sha oladigan max kanal; null = cheksiz
+  premiumUntil      DateTime? // premium tugash vaqti (null/o'tgan = premium emas)
+  requestCount      Int      @default(0)  // bepul so'rovlar hisobi
+  firstRequestAt    DateTime? // birinchi so'rov vaqti (vaqt cheklovi uchun)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   @@index([referredById])
   @@map("users")
+}
+
+// ===================== PREMIUM TARIFLAR =====================
+model Tariff {
+  id        Int     @id @default(autoincrement())
+  label     String  // masalan "1 oy"
+  days      Int     // premium davomiyligi (kun)
+  price     Int     // narx (so'm)
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  @@map("tariffs")
+}
+
+// ===================== PREMIUM TO'LOVLARI (qo'lda tasdiq) =====================
+model Payment {
+  id           Int       @id @default(autoincrement())
+  userId       BigInt
+  tariffId     Int
+  tariffLabel  String    // snapshot (tarif o'zgarsa tarix buzilmasin)
+  days         Int       // snapshot
+  amount       Int       // snapshot
+  status       String    @default("pending") // pending | approved | rejected
+  proofFileId  String?   // chek/screenshot file_id
+  createdAt    DateTime  @default(now())
+  reviewedById BigInt?
+  reviewedAt   DateTime?
+
+  @@index([status])
+  @@index([userId])
+  @@map("payments")
 }
 
 // ===================== FUNNEL (SO'ROVNOMA) =====================

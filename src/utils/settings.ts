@@ -49,6 +49,10 @@ export const KEYS = {
   lastBackupAt:      "last_backup_at",
   aiUserModel:       "ai_user_model",   // "provider:model" — foydalanuvchi AI scope'i
   aiAdminModel:      "ai_admin_model",  // "provider:model" — admin AI scope'i
+  premiumEnabled:    "premium_enabled",     // premium/limit tizimi yoq/o'chir
+  freeRequestLimit:  "free_request_limit",  // bepul so'rovlar soni (0 = cheksiz)
+  freeDays:          "free_days",           // bepul kunlar (0 = cheksiz)
+  paymentInfo:       "payment_info",        // to'lov ko'rsatma (karta raqami va h.k.)
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────────────

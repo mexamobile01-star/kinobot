@@ -1,0 +1,36 @@
+import { prisma } from "../prisma.js";
+import { getBool, getSetting, KEYS } from "./settings.js";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Foydalanuvchi hozir premiummi? */
+export function isPremiumActive(premiumUntil: Date | null | undefined): boolean {
+  return !!premiumUntil && premiumUntil.getTime() > Date.now();
+}
+
+/** Premium/limit tizimi umuman yoqilganmi? */
+export function premiumEnabled(): Promise<boolean> {
+  return getBool(KEYS.premiumEnabled, false);
+}
+
+export async function getFreeLimits(): Promise<{ requests: number; days: number }> {
+  const [r, d] = await Promise.all([
+    getSetting(KEYS.freeRequestLimit, "0"),
+    getSetting(KEYS.freeDays, "0"),
+  ]);
+  return { requests: parseInt(r, 10) || 0, days: parseInt(d, 10) || 0 };
+}
+
+/** Foydalanuvchiga premium beradi (mavjud premiumga qo'shadi yoki hozirdan boshlaydi) */
+export async function grantPremium(userId: bigint, days: number): Promise<Date> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const base = isPremiumActive(user?.premiumUntil) ? user!.premiumUntil!.getTime() : Date.now();
+  const until = new Date(base + days * DAY_MS);
+  await prisma.user.update({ where: { id: userId }, data: { premiumUntil: until } }).catch(() => null);
+  return until;
+}
+
+/** Faol tariflar (tartiblangan) */
+export function activeTariffs() {
+  return prisma.tariff.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } });
+}
