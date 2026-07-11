@@ -120,6 +120,17 @@ export function userMenuKeyboard(): Keyboard {
     .resized();
 }
 
+/** AI suhbati davomida ko'rinadigan doimiy klaviatura — asosiy tugmalar +
+ * chiqish tugmasi birga (asosiy menyu yo'qolib qolmasligi uchun) */
+export function aiActiveKeyboard(): Keyboard {
+  return new Keyboard()
+    .text("Kino qidirish", { icon_custom_emoji_id: "5429571366384842791" })
+    .text("Referal / pul ishlash")
+    .row()
+    .text("❌ Chiqish")
+    .resized();
+}
+
 export function cancelKeyboard(): Keyboard {
   return new Keyboard().text("❌ Bekor qilish").resized().oneTime();
 }
