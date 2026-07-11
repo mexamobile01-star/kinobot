@@ -4,6 +4,7 @@ import { adminCan } from "../../config.js";
 import { e } from "../../utils/emoji.js";
 import { ibtn, kb, aiActiveKeyboard, adminMenuKeyboard } from "../../utils/keyboard.js";
 import { aiEnabled, askAI } from "../../services/ai.js";
+import { AI_CONTROLLABLE, findControllable, applyControllable, getSetting } from "../../utils/settings.js";
 import type { MyContext } from "../../types.js";
 
 export const aiAdminHandler = new Composer<MyContext>();
@@ -103,8 +104,33 @@ function adminSystemPrompt(stats: string, userInfo: string): string {
     `4. XABARNI O'ZING YUBORMAYSAN — bot adminga tasdiqlash/fikr bildirish/bekor qilish tugmalarini ` +
     `ko'rsatadi, admin tasdiqlagandan keyingina yuboriladi.\n\n` +
 
+    `━━━ SOZLAMALARNI O'ZGARTIRISH ━━━\n` +
+    `Agar admin bot SOZLAMASINI o'zgartirishni so'rasa (masalan "majburiy obunani o'chir", ` +
+    `"foydalanuvchi AI modelini cerebras qil"), javobing OXIRIGA quyidagicha qo'sh:\n` +
+    `[SETTING:kalit=qiymat] (bir nechta bo'lsa har birini alohida qatorda).\n` +
+    `FAQAT quyidagi ruxsat etilgan kalitlardan foydalan (boshqasini YOZMA):\n${settingsWhitelistText()}\n` +
+    `bool kalitlar uchun qiymat: 1 (yoq) yoki 0 (o'chir). Model kalitlari uchun "provider:model" ` +
+    `formatida (masalan cerebras:llama-3.3-70b). O'zgarishni O'ZING QO'LLAMAYSAN — bot adminga ` +
+    `tasdiqlash tugmalarini ko'rsatadi, tasdiqdan keyin qo'llaydi. Blokdan oldin qisqa izoh yozishing mumkin.\n\n` +
+
     `Endi adminga eng yaxshi tarzda yordam ber!`
   );
+}
+
+function settingsWhitelistText(): string {
+  return AI_CONTROLLABLE.map((s) => `- ${s.key} (${s.label}, ${s.type})`).join("\n");
+}
+
+/** [SETTING:key=value] bloklarini ajratib oladi va matndan olib tashlaydi */
+function extractSettings(answer: string): { display: string; changes: { key: string; value: string }[] } {
+  const changes: { key: string; value: string }[] = [];
+  const re = /\[SETTING:\s*([a-z0-9_]+)\s*=\s*([^\]]*)\]/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(answer)) !== null) {
+    changes.push({ key: m[1].trim(), value: m[2].trim() });
+  }
+  const display = answer.replace(/\[SETTING:[^\]]*\]/gi, "").trim();
+  return { display, changes };
 }
 
 async function askAdminAi(ctx: MyContext, prompt: string): Promise<string | null> {
@@ -198,11 +224,55 @@ aiAdminHandler.on("message:text", async (ctx, next) => {
     return;
   }
 
-  const { display, draft } = extractBroadcast(answer);
+  // Avval sozlama o'zgarishlarini ajratamiz, keyin broadcastni
+  const { display: afterSettings, changes } = extractSettings(answer);
+  const { display, draft } = extractBroadcast(afterSettings);
   if (display) {
     await ctx.reply(display).catch(async () => { await ctx.reply(e.escapeHtml(display)); });
   }
   if (draft) await showDraftPreview(ctx, draft);
+  if (changes.length) await showSettingsPreview(ctx, changes);
+});
+
+/** AI taklif qilgan sozlama o'zgarishlarini tasdiqlash uchun ko'rsatadi */
+async function showSettingsPreview(ctx: MyContext, changes: { key: string; value: string }[]) {
+  const valid = changes.filter((c) => findControllable(c.key));
+  if (valid.length === 0) return;
+
+  const lines: string[] = ["⚙️ <b>Sozlama o'zgarishi taklifi</b>\n"];
+  for (const c of valid) {
+    const spec = findControllable(c.key)!;
+    const cur = await getSetting(c.key, "—");
+    lines.push(`• <b>${spec.label}</b>\n   <code>${cur || "—"}</code> → <code>${e.escapeHtml(c.value)}</code>`);
+  }
+
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), aiAdminSettings: valid };
+  await ctx.reply(lines.join("\n"), {
+    reply_markup: kb(
+      [ibtn("✅ Tasdiqlash va qo'llash", "aiadm:setapply", "success")],
+      [ibtn("❌ Bekor qilish", "aiadm:setcancel", "danger")],
+    ),
+  });
+}
+
+aiAdminHandler.callbackQuery("aiadm:setapply", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const changes = ctx.session.scratch?.aiAdminSettings as { key: string; value: string }[] | undefined;
+  if (!changes?.length) { await ctx.reply("❌ O'zgarish topilmadi."); return; }
+  if (ctx.session.scratch) delete ctx.session.scratch.aiAdminSettings;
+
+  let applied = 0;
+  for (const c of changes) {
+    if (await applyControllable(c.key, c.value)) applied++;
+  }
+  await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
+  await ctx.reply(`✅ <b>${applied}</b> ta sozlama qo'llandi.`);
+});
+
+aiAdminHandler.callbackQuery("aiadm:setcancel", async (ctx) => {
+  await ctx.answerCallbackQuery({ text: "Bekor qilindi." });
+  if (ctx.session.scratch) delete ctx.session.scratch.aiAdminSettings;
+  await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
 });
 
 aiAdminHandler.callbackQuery("aiadm:send", async (ctx) => {

@@ -51,6 +51,47 @@ export const KEYS = {
   aiAdminModel:      "ai_admin_model",  // "provider:model" — admin AI scope'i
 } as const;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AI ORQALI BOSHQARILADIGAN SOZLAMALAR (whitelist)
+// Admin AI [SETTING:key=value] chiqarsa, FAQAT shu ro'yxatdagi kalitlar qo'llanadi.
+// ─────────────────────────────────────────────────────────────────────────────
+export interface ControllableSetting {
+  key: string;
+  label: string;
+  type: "bool" | "text" | "int";
+}
+
+export const AI_CONTROLLABLE: ControllableSetting[] = [
+  { key: KEYS.forceSubEnabled,    label: "Majburiy obuna (yoq/o'chir)", type: "bool" },
+  { key: KEYS.subCheckBtnText,    label: "Tekshirish tugmasi matni",     type: "text" },
+  { key: KEYS.subChannelBtnLabel, label: "Kanal obuna tugmasi yorlig'i", type: "text" },
+  { key: KEYS.aiUserModel,        label: "Foydalanuvchi AI modeli (provider:model)", type: "text" },
+  { key: KEYS.aiAdminModel,       label: "Admin AI modeli (provider:model)", type: "text" },
+  { key: KEYS.autoBackupEnabled,  label: "Avto backup (yoq/o'chir)",     type: "bool" },
+];
+
+export function findControllable(key: string): ControllableSetting | undefined {
+  return AI_CONTROLLABLE.find((s) => s.key === key);
+}
+
+/** Whitelistdagi kalitni tekshirib qo'llaydi. Qo'llansa true. */
+export async function applyControllable(key: string, rawValue: string): Promise<boolean> {
+  const spec = findControllable(key);
+  if (!spec) return false;
+  const v = rawValue.trim();
+  if (spec.type === "bool") {
+    const on = /^(1|true|yoq|yoqilgan|ha|on|enable)/i.test(v) && !/^(0|false|o'chir|yo'q|off|disable)/i.test(v);
+    await setBool(key, on);
+  } else if (spec.type === "int") {
+    const n = parseInt(v, 10);
+    if (Number.isNaN(n)) return false;
+    await setSetting(key, String(n));
+  } else {
+    await setSetting(key, v.slice(0, 256));
+  }
+  return true;
+}
+
 export async function getGlobalButton(prefix: "movie" | "serial") {
   const textKey  = prefix === "movie" ? KEYS.movieBtnText  : KEYS.serialBtnText;
   const urlKey   = prefix === "movie" ? KEYS.movieBtnUrl   : KEYS.serialBtnUrl;
