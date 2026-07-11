@@ -21,6 +21,7 @@ export const config = {
     : null,
   usePremiumEmoji: (process.env.USE_PREMIUM_EMOJI ?? "true") === "true",
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  groqApiKey: process.env.GROQ_API_KEY ?? "",
 };
 
 // Dinamik admin Set — ownerlar + DB'dan yuklangan qo'shimcha adminlar

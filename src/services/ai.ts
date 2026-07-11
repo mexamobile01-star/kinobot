@@ -1,22 +1,52 @@
 import { config } from "../config.js";
 
-const MODEL = "gemini-2.0-flash";
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+// Ikki provayder qo'llab-quvvatlanadi:
+//  - Groq (bepul, tez, O'zbekistonda ishlaydi): GROQ_API_KEY
+//  - Google Gemini (ba'zi hududlarda bepul kvota yo'q): GEMINI_API_KEY
+// Groq birinchi navbatda ishlatiladi (agar kalit bor bo'lsa).
 
-/** AI yoqilganmi (API kalit bor) */
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODEL = "llama-3.3-70b-versatile";
+
+const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
+/** AI yoqilganmi (biror provayder kaliti bor) */
 export function aiEnabled(): boolean {
-  return !!config.geminiApiKey;
+  return !!config.groqApiKey || !!config.geminiApiKey;
 }
 
-/**
- * Gemini'ga so'rov yuboradi. Kalit yo'q yoki xato bo'lsa null qaytaradi.
- */
-export async function askGemini(userText: string, system?: string): Promise<string | null> {
-  const key = config.geminiApiKey;
-  if (!key) return null;
-
+async function askGroq(userText: string, system?: string): Promise<string | null> {
   try {
-    const res = await fetch(`${ENDPOINT}?key=${key}`, {
+    const res = await fetch(GROQ_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.groqApiKey}`,
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [
+          ...(system ? [{ role: "system", content: system }] : []),
+          { role: "user", content: userText },
+        ],
+        temperature: 0.7,
+        max_tokens: 800,
+      }),
+    });
+    if (!res.ok) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: any = await res.json();
+    const text = data?.choices?.[0]?.message?.content;
+    return typeof text === "string" ? text.trim() || null : null;
+  } catch {
+    return null;
+  }
+}
+
+async function askGeminiApi(userText: string, system?: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${GEMINI_URL}?key=${config.geminiApiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -36,4 +66,19 @@ export async function askGemini(userText: string, system?: string): Promise<stri
   } catch {
     return null;
   }
+}
+
+/**
+ * AI'ga so'rov yuboradi. Groq birinchi, keyin Gemini. Kalit yo'q/xato bo'lsa null.
+ */
+export async function askGemini(userText: string, system?: string): Promise<string | null> {
+  if (config.groqApiKey) {
+    const r = await askGroq(userText, system);
+    if (r) return r;
+  }
+  if (config.geminiApiKey) {
+    const r = await askGeminiApi(userText, system);
+    if (r) return r;
+  }
+  return null;
 }
