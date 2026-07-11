@@ -53,18 +53,34 @@ bot.on("chat_member", async (ctx) => {
   const userId    = update.new_chat_member.user.id;
   const chatId    = update.chat.id;
 
-  // A'zolikdan chiqqan yoki chiqarib yuborilgan
-  const leftStatuses = ["left", "kicked"];
-  const wasIn = !leftStatuses.includes(oldStatus);
-  const nowOut = leftStatuses.includes(newStatus);
-  if (!wasIn || !nowOut) return;
-
-  // Shu kanal REQUEST turida bo'lsa — so'rov yozuvini o'chiramiz
+  // Faqat bizning kanallar uchun kuzatamiz
   const ch = await prisma.channel.findUnique({ where: { chatId: BigInt(chatId) } });
-  if (ch?.type === "REQUEST") {
-    await prisma.joinRequest.deleteMany({
-      where: { channelId: BigInt(chatId), userId: BigInt(userId) },
+  if (!ch) return;
+
+  const leftStatuses = ["left", "kicked"];
+  const wasIn  = !leftStatuses.includes(oldStatus);
+  const nowIn  = !leftStatuses.includes(newStatus);
+  const nowOut = leftStatuses.includes(newStatus);
+
+  // Qo'shildi (statistika)
+  if (!wasIn && nowIn) {
+    await prisma.channelEvent.create({
+      data: { channelId: BigInt(chatId), userId: BigInt(userId), type: "join" },
     }).catch(() => null);
+    return;
+  }
+
+  // Chiqib ketdi
+  if (wasIn && nowOut) {
+    await prisma.channelEvent.create({
+      data: { channelId: BigInt(chatId), userId: BigInt(userId), type: "leave" },
+    }).catch(() => null);
+    // REQUEST kanalda so'rov yozuvini o'chiramiz (qayta so'rov yubora olsin)
+    if (ch.type === "REQUEST") {
+      await prisma.joinRequest.deleteMany({
+        where: { channelId: BigInt(chatId), userId: BigInt(userId) },
+      }).catch(() => null);
+    }
   }
 });
 

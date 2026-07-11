@@ -118,11 +118,23 @@ model JoinRequest {
   status    String   @default("pending") // pending | approved | declined
   date      DateTime @default(now())
 
-  channel Channel @relation(fields: [channelId], references: [chatId])
+  channel Channel @relation(fields: [channelId], references: [chatId], onDelete: Cascade)
 
   @@unique([channelId, userId])
   @@index([channelId, date])
   @@map("join_requests")
+}
+
+// ===================== KANAL QO'SHILISH/CHIQISH HODISALARI (statistika) =====================
+model ChannelEvent {
+  id        Int      @id @default(autoincrement())
+  channelId BigInt
+  userId    BigInt
+  type      String   @default("join") // join | leave
+  date      DateTime @default(now())
+
+  @@index([channelId, date])
+  @@map("channel_events")
 }
 
 // ===================== KINO =====================

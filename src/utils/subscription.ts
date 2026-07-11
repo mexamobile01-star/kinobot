@@ -1,25 +1,61 @@
 import { InlineKeyboard } from "grammy";
 import { prisma } from "../prisma.js";
-import { ce } from "./emoji.js";
 import { getSetting, KEYS } from "./settings.js";
 import type { MyContext } from "../types.js";
 import type { Channel } from "@prisma/client";
 
 const SUBSCRIBED_STATUSES = ["creator", "administrator", "member", "restricted"];
 
+// Kanal turini avtomatik yangilash uchun throttle (har kanal soatiga 1 marta)
+const lastSync = new Map<string, number>();
+const SYNC_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * Kanal ma'lumotini Telegramdan qayta oladi va tur o'zgargan bo'lsa yangilaydi
+ * (ommaviy↔maxfiy). REQUEST/INSTAGRAM tegilmaydi.
+ */
+async function maybeSyncChannel(ctx: MyContext, ch: Channel): Promise<Channel> {
+  if (ch.type === "INSTAGRAM" || ch.type === "REQUEST") return ch;
+  const key = ch.chatId.toString();
+  if (Date.now() - (lastSync.get(key) ?? 0) < SYNC_TTL_MS) return ch;
+  lastSync.set(key, Date.now());
+
+  const chat = await ctx.api.getChat(Number(ch.chatId)).catch(() => null);
+  if (!chat) return ch;
+
+  const uname = ("username" in chat ? chat.username : undefined) ?? null;
+  const title = ("title" in chat ? chat.title : undefined) ?? ch.title;
+  const newType = uname ? "PUBLIC" : "PRIVATE";
+
+  if (uname === ch.username && newType === ch.type && title === ch.title) return ch;
+
+  let inviteLink = ch.inviteLink;
+  if (newType === "PRIVATE" && !inviteLink) {
+    const link = await ctx.api.createChatInviteLink(Number(ch.chatId)).catch(() => null);
+    inviteLink = link?.invite_link ?? ch.inviteLink;
+  }
+
+  const updated = await prisma.channel.update({
+    where: { id: ch.id },
+    data: { username: uname, title, type: newType, inviteLink },
+  }).catch(() => null);
+  return updated ?? ch;
+}
+
 /** Foydalanuvchi a'zo bo'lmagan (yoki so'rov yubormagan) kanallarni qaytaradi */
 export async function getUnsubscribedChannels(
   ctx: MyContext,
   userId: number
 ): Promise<Channel[]> {
-  const channels = await prisma.channel.findMany({
+  const raw = await prisma.channel.findMany({
     where: { isActive: true },
     orderBy: { sortOrder: "asc" },
   });
-  if (channels.length === 0) return [];
+  if (raw.length === 0) return [];
 
   const results = await Promise.all(
-    channels.map(async (ch) => {
+    raw.map(async (ch0) => {
+      const ch = await maybeSyncChannel(ctx, ch0);
       // Instagram: API orqali tekshirib bo'lmaydi — har doim ko'rsatiladi
       if (ch.type === "INSTAGRAM") return { channel: ch, isSubscribed: false };
 

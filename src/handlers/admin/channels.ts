@@ -85,45 +85,136 @@ channelsHandler.callbackQuery("ch:close", async (ctx) => {
   await ctx.reply("Admin panel:", { reply_markup: adminMenuKeyboard(ctx.from.id) });
 });
 
-// ============ TOGGLE ============
+// ============ TOGGLE (umumiy majburiy obuna) ============
 channelsHandler.callbackQuery("ch:toggle", async (ctx) => {
   const cur = await getBool(KEYS.forceSubEnabled, true);
   await setBool(KEYS.forceSubEnabled, !cur);
-  await ctx.answerCallbackQuery({ text: !cur ? "Yoqildi" : "O'chirildi" });
+  await ctx.answerCallbackQuery({
+    text: !cur
+      ? "✅ Majburiy obuna YOQILDI\n\nEndi foydalanuvchilar kanallarga a'zo bo'lishi shart."
+      : "❌ Majburiy obuna O'CHIRILDI\n\nFoydalanuvchilar obunasiz foydalana oladi.",
+    show_alert: true,
+  });
   await refreshMenu(ctx);
 });
 
+const TYPE_LABEL: Record<ChannelType, string> = {
+  PUBLIC: "Ommaviy", PRIVATE: "Maxfiy", REQUEST: "So'rovli", INSTAGRAM: "Instagram",
+};
+
 // ============ RO'YXAT ============
 channelsHandler.callbackQuery("ch:list", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await renderChannelList(ctx);
+});
+
+async function renderChannelList(ctx: MyContext) {
   const channels = await prisma.channel.findMany({ orderBy: { sortOrder: "asc" } });
   if (channels.length === 0) {
-    await ctx.answerCallbackQuery({ text: "Hozircha kanal qo'shilmagan.", show_alert: true });
+    await ctx.editMessageText("📭 Hozircha kanal qo'shilmagan.", {
+      reply_markup: kb([ibtn("Orqaga", "ch:menu", undefined, BE.backMenu)]),
+    }).catch(() => {});
     return;
   }
-  await ctx.answerCallbackQuery();
 
-  const label: Record<ChannelType, string> = {
-    PUBLIC: "Ommaviy", PRIVATE: "Maxfiy", REQUEST: "So'rovli", INSTAGRAM: "Instagram",
-  };
-  const lines = channels.map((c, i) => {
-    const handle = c.username ? `@${c.username}` : c.inviteLink ?? "(havola yo'q)";
-    const btnLbl = c.buttonLabel ? ` | Yorliq: "${c.buttonLabel}"` : "";
-    return `<b>${i + 1}.</b> ${label[c.type]} — <b>${e.escapeHtml(c.title)}</b>\n` +
-           `<code>${e.escapeHtml(handle)}</code> ${c.isActive ? "✅" : "❌"}${btnLbl}`;
-  });
-
-  // Har bir kanal uchun yorliq tahrirlash tugmasi
   const rows = channels.map((c) => [
-    ibtn(`✏️ ${c.title}`, `ch:editlabel:${c.id}`, "primary"),
+    ibtn(
+      `${c.isActive ? "🟢" : "🔴"} ${TYPE_LABEL[c.type]} · ${c.title}`.slice(0, 60),
+      `ch:view:${c.id}`,
+      c.isActive ? "success" : "danger",
+    ),
   ]);
   rows.push([ibtn("Orqaga", "ch:menu", undefined, BE.backMenu)]);
 
   await ctx.editMessageText(
-    `${ce("list")} <b>Kanallar ro'yxati:</b>\n\n${lines.join("\n\n")}`,
+    `${ce("list")} <b>Kanallar ro'yxati</b>\n\n🟢 = majburiy obuna yoqilgan\n🔴 = o'chirilgan\n\nBatafsil va statistika uchun tanlang:`,
     { reply_markup: kb(...rows) }
-  ).catch(async () => {
-    await ctx.reply(`${ce("list")} <b>Kanallar ro'yxati:</b>\n\n${lines.join("\n\n")}`);
+  ).catch(() => {});
+}
+
+// ============ KANAL DETALI + STATISTIKA ============
+function startOfDay(d: Date) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+
+async function renderChannelDetail(ctx: MyContext, id: number) {
+  const c = await prisma.channel.findUnique({ where: { id } });
+  if (!c) { await ctx.answerCallbackQuery({ text: "Kanal topilmadi.", show_alert: true }); return; }
+
+  const now = new Date();
+  const today = startOfDay(now);
+  const week  = new Date(now); week.setDate(week.getDate() - 7);
+  const month = new Date(now); month.setDate(month.getDate() - 30);
+
+  const [joinToday, joinWeek, joinMonth, joinTotal] = await Promise.all([
+    prisma.channelEvent.count({ where: { channelId: c.chatId, type: "join", date: { gte: today } } }),
+    prisma.channelEvent.count({ where: { channelId: c.chatId, type: "join", date: { gte: week } } }),
+    prisma.channelEvent.count({ where: { channelId: c.chatId, type: "join", date: { gte: month } } }),
+    prisma.channelEvent.count({ where: { channelId: c.chatId, type: "join" } }),
+  ]);
+
+  // Umumiy a'zo soni (Telegram)
+  let memberCount = "—";
+  if (c.type !== "INSTAGRAM") {
+    const cnt = await ctx.api.getChatMemberCount(Number(c.chatId)).catch(() => null);
+    if (cnt !== null) memberCount = String(cnt);
+  }
+
+  const handle = c.username ? `@${c.username}` : c.inviteLink ?? "(havola yo'q)";
+
+  let reqLine = "";
+  if (c.type === "REQUEST") {
+    const pending = await prisma.joinRequest.count({ where: { channelId: c.chatId, status: "pending" } });
+    reqLine = `\n⏳ Kutilayotgan so'rovlar: <b>${pending}</b>`;
+  }
+
+  const text =
+    `<tg-emoji emoji-id="${BE.channel}">📢</tg-emoji> <b>${e.escapeHtml(c.title)}</b>\n` +
+    `Tur: <b>${TYPE_LABEL[c.type]}</b>\n` +
+    `<code>${e.escapeHtml(handle)}</code>\n` +
+    `Majburiy obuna: <b>${c.isActive ? "🟢 Yoqilgan" : "🔴 O'chirilgan"}</b>\n\n` +
+    `<b>📊 Qo'shilish statistikasi:</b>\n` +
+    `Bugun: <b>${joinToday}</b>\n` +
+    `1 hafta: <b>${joinWeek}</b>\n` +
+    `1 oy: <b>${joinMonth}</b>\n` +
+    `Jami (kuzatilgan): <b>${joinTotal}</b>\n` +
+    `Umumiy a'zolar: <b>${memberCount}</b>` +
+    reqLine;
+
+  const rows: ReturnType<typeof ibtn>[][] = [
+    [ibtn(
+      c.isActive ? "🔴 Majburiy obunani o'chirish" : "🟢 Majburiy obunani yoqish",
+      `ch:subtoggle:${c.id}`,
+      c.isActive ? "danger" : "success",
+    )],
+    [ibtn("✏️ Yorliqni tahrirlash", `ch:editlabel:${c.id}`, "primary")],
+  ];
+  if (c.type === "REQUEST") {
+    rows.push([ibtn("📋 So'rovlarni boshqarish", "ch:jrstats", "primary")]);
+  }
+  rows.push([ibtn("🗑 O'chirish", `ch:delconf:${c.id}`, "danger", BE.chDelete)]);
+  rows.push([ibtn("Orqaga", "ch:list", undefined, BE.backMenu)]);
+
+  await ctx.editMessageText(text, { reply_markup: kb(...rows) }).catch(() => {});
+}
+
+channelsHandler.callbackQuery(/^ch:view:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await renderChannelDetail(ctx, Number(ctx.match[1]));
+});
+
+// Har bir kanal uchun alohida majburiy obuna toggle (popup bilan)
+channelsHandler.callbackQuery(/^ch:subtoggle:(\d+)$/, async (ctx) => {
+  const id = Number(ctx.match[1]);
+  const c = await prisma.channel.findUnique({ where: { id } });
+  if (!c) { await ctx.answerCallbackQuery({ text: "Topilmadi.", show_alert: true }); return; }
+  const next = !c.isActive;
+  await prisma.channel.update({ where: { id }, data: { isActive: next } });
+  await ctx.answerCallbackQuery({
+    text: next
+      ? `✅ "${c.title}" — majburiy obuna YOQILDI`
+      : `❌ "${c.title}" — majburiy obuna O'CHIRILDI`,
+    show_alert: true,
   });
+  await renderChannelDetail(ctx, id);
 });
 
 // ============ KANAL YORLIG'INI TAHRIRLASH ============
@@ -643,7 +734,15 @@ channelsHandler.callbackQuery("ch:del", async (ctx) => {
 });
 
 channelsHandler.callbackQuery(/^ch:delconf:(\d+)$/, async (ctx) => {
-  await prisma.channel.delete({ where: { id: Number(ctx.match[1]) } }).catch(() => {});
-  await ctx.answerCallbackQuery({ text: "O'chirildi" });
-  await refreshMenu(ctx);
+  const id = Number(ctx.match[1]);
+  try {
+    await prisma.channel.delete({ where: { id } });
+    await ctx.answerCallbackQuery({ text: "✅ O'chirildi", show_alert: true });
+    await renderChannelList(ctx);
+  } catch (err) {
+    await ctx.answerCallbackQuery({
+      text: `❌ O'chirib bo'lmadi: ${(err as Error).message}`,
+      show_alert: true,
+    });
+  }
 });
