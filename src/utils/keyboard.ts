@@ -111,22 +111,18 @@ export function adminMenuKeyboard(userId?: number | bigint): Keyboard {
 }
 
 // ===================== FOYDALANUVCHI REPLY KEYBOARD =====================
+// Reply (doimiy) klaviaturada FAQAT "AI yordamchi" qoladi — qidiruv (matn
+// yozib), referal, mashhur va random kinolar endi / komandalar orqali.
 export function userMenuKeyboard(): Keyboard {
   return new Keyboard()
-    .text("Kino qidirish", { icon_custom_emoji_id: "5429571366384842791" })
-    .text("Referal / pul ishlash")
-    .row()
-    .text("AI yordamchi")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .text("AI yordamchi", { icon_custom_emoji_id: "5258093637450866522", style: "primary" } as any)
     .resized();
 }
 
-/** AI suhbati davomida ko'rinadigan doimiy klaviatura — asosiy tugmalar +
- * chiqish tugmasi birga (asosiy menyu yo'qolib qolmasligi uchun) */
+/** AI suhbati davomida ko'rinadigan doimiy klaviatura — faqat chiqish tugmasi */
 export function aiActiveKeyboard(): Keyboard {
   return new Keyboard()
-    .text("Kino qidirish", { icon_custom_emoji_id: "5429571366384842791" })
-    .text("Referal / pul ishlash")
-    .row()
     .text("❌ Chiqish")
     .resized();
 }

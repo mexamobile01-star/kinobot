@@ -1,4 +1,4 @@
-import { Composer, InlineKeyboard } from "grammy";
+import { Composer } from "grammy";
 import { prisma } from "../prisma.js";
 import { isAdmin } from "../config.js";
 import { adminMenuKeyboard, userMenuKeyboard } from "../utils/keyboard.js";
@@ -15,7 +15,11 @@ const WELCOME =
   `Bu yerda eng sara kinolar va seriallar sizni kutmoqda.\n\n` +
   `<b>Kino kodini</b> yuboring — men uni darhol topib beraman.\n` +
   `Yoki kino <b>nomini</b> yozib qidiring.\n\n` +
-  `<tg-emoji emoji-id="5429571366384842791">🔎</tg-emoji> Masalan: <code>123</code>`;
+  `<tg-emoji emoji-id="5429571366384842791">🔎</tg-emoji> Masalan: <code>123</code>\n\n` +
+  `<b>Buyruqlar:</b>\n` +
+  `/referal — pul ishlash\n` +
+  `/mashhur — eng ko'p ko'rilgan kinolar\n` +
+  `/random — tasodifiy kino`;
 
 async function deliverMovieByCode(ctx: MyContext, code: number): Promise<boolean> {
   const movie = await prisma.movie.findUnique({ where: { code } });
@@ -99,12 +103,4 @@ startHandler.callbackQuery("sub:check", async (ctx) => {
       show_alert: true,
     });
   }
-});
-
-startHandler.hears("Kino qidirish", async (ctx) => {
-  await ctx.reply(
-    `<tg-emoji emoji-id="5429571366384842791">🔎</tg-emoji> Kino <b>kodi</b> yoki <b>nomini</b> yuboring.\n\n` +
-    `👇 Do'stlaringiz chatida ham qidirishingiz mumkin:`,
-    { reply_markup: new InlineKeyboard().switchInline("🔎 Inline qidiruv", "") }
-  );
 });

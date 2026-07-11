@@ -51,13 +51,33 @@ async function buildContext(): Promise<string> {
   return `KINOLAR:\n${mv}\n\nSERIALLAR:\n${sr}`;
 }
 
-function systemPrompt(context: string): string {
+/** Foydalanuvchi haqida AI uchun qisqa profil matni */
+function buildUserInfo(ctx: MyContext): string {
+  const u = ctx.from!;
+  const name     = u.first_name?.trim() || "Foydalanuvchi";
+  const lastName = u.last_name?.trim();
+  const fullName = lastName ? `${name} ${lastName}` : name;
+  const username = u.username ? `@${u.username}` : "yo'q";
+  return `Ism: ${fullName}\nUsername: ${username}\nTelegram ID: ${u.id}`;
+}
+
+function systemPrompt(context: string, userInfo: string): string {
   return (
     `Sen — "🎬 Kino vaqti" Telegram botining zamonaviy, aqlli va samimiy AI yordamchisisan. ` +
     `Vazifang: foydalanuvchiga kino/serial tanlashda yordam berish, savollariga javob berish va ularni xursand qilish.\n\n` +
 
+    `━━━ FOYDALANUVCHI ━━━\n${userInfo}\n` +
+    `Uni ismi bilan chaqir, samimiy va shaxsiy munosabatda bo'l. Agar o'z ID'si yoki profil ` +
+    `ma'lumotlarini so'rasa (masalan "mening ID'im nima", "ismim nima") — yuqoridagi ma'lumotlarni ber.\n\n` +
+
+    `━━━ TIL ━━━\n` +
+    `• Foydalanuvchi QAYSI TILDA va QAYSI ALIFBODA yozsa (o'zbek lotin, o'zbek kirill, rus, ingliz va h.k.), ` +
+    `SEN HAM AYNAN o'sha tilda va alifboda javob ber. Tilni har xabarda qayta aniqla — foydalanuvchi til ` +
+    `almashtirsa, sen ham darhol almashtir.\n` +
+    `• Til aniq bo'lmasa (masalan faqat raqam yozgan bo'lsa) — oldingi til bilan yoki o'zbek lotin ` +
+    `alifbosida javob ber.\n\n` +
+
     `━━━ USLUB ━━━\n` +
-    `• Har doim O'ZBEK tilida yoz.\n` +
     `• Javoblaringni CHIROYLI bezat: HTML teglaridan foydalanish mumkin — <b>qalin</b>, <i>kursiv</i>, <code>kod</code>.\n` +
     `• Mos emojilardan saxiylik bilan foydalan (🎬🍿🔥⭐️😍🎭🚀💥❤️🤖 va h.k.).\n` +
     `• Ro'yxatlarni chiroyli, tushunarli tuz. Uzun matndan qoch — jonli va qiziqarli bo'l.\n` +
@@ -237,7 +257,7 @@ aiUserHandler.on("message:text", async (ctx, next) => {
 
   await ctx.replyWithChatAction("typing").catch(() => {});
   const context = await buildContext();
-  const answer = await askGemini(text, systemPrompt(context));
+  const answer = await askGemini(text, systemPrompt(context, buildUserInfo(ctx)));
 
   if (!answer) {
     await ctx.reply("🤖 Kechirasiz, hozir javob bera olmadim. Birozdan keyin urinib ko'ring.", {

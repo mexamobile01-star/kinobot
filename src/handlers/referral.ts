@@ -4,7 +4,7 @@ import type { MyContext } from "../types.js";
 
 export const referralHandler = new Composer<MyContext>();
 
-referralHandler.hears("Referal / pul ishlash", async (ctx) => {
+referralHandler.command("referal", async (ctx) => {
   const uid  = ctx.from!.id;
   const link = `https://t.me/${ctx.me.username}?start=ref_${uid}`;
   const count = await getReferralCount(uid);

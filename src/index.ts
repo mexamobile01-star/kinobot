@@ -118,7 +118,10 @@ async function main() {
   startAutoBackup(bot);
 
   await bot.api.setMyCommands([
-    { command: "start", description: "Botni ishga tushirish" },
+    { command: "start",   description: "Botni ishga tushirish" },
+    { command: "referal", description: "Referal / pul ishlash" },
+    { command: "mashhur", description: "Eng ko'p ko'rilgan kinolar" },
+    { command: "random",  description: "Tasodifiy kino" },
   ]);
 
   // Eski owner uchun ro'yxatga olingan /admin komandasini o'chirish

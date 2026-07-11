@@ -15,12 +15,39 @@ export const searchHandler = new Composer<MyContext>();
 const PANEL_TEXTS = new Set([
   ...Object.values(ADMIN_MENU_BUTTONS),
   "🔄 Yangilash",
-  "Kino qidirish",
-  "Referal / pul ishlash",
   "AI yordamchi",
   "❌ Chiqish",
   "❌ Bekor qilish",
 ]);
+
+/** Majburiy obunani tekshiradi (admin bo'lmasa). false — bloklangan. */
+async function checkAccess(ctx: MyContext): Promise<boolean> {
+  const uid = ctx.from!.id;
+  if (isAdmin(uid)) return true;
+  const forceSub = await getBool(KEYS.forceSubEnabled, true);
+  if (forceSub) {
+    const ok = await ensureSubscribed(ctx, uid);
+    if (!ok) return false;
+  }
+  await confirmReferral(ctx, uid);
+  return true;
+}
+
+// ─── /mashhur — eng ko'p ko'rilgan kinolar ───────────────────────────────────
+searchHandler.command("mashhur", async (ctx) => {
+  if (!(await checkAccess(ctx))) return;
+  await renderPopular(ctx, 0, false);
+});
+
+// ─── /random — tasodifiy kino ────────────────────────────────────────────────
+searchHandler.command("random", async (ctx) => {
+  if (!(await checkAccess(ctx))) return;
+  const total = await prisma.movie.count();
+  if (total === 0) { await ctx.reply("📭 Hozircha kino yo'q."); return; }
+  const skip = Math.floor(Math.random() * total);
+  const [movie] = await prisma.movie.findMany({ skip, take: 1 });
+  if (movie) await sendMovie(ctx, movie);
+});
 
 // ─── Qidiruv knopkasi: ko'p ko'rilgan / inline ───────────────────────────────
 searchHandler.callbackQuery("popular:page:0", async (ctx) => {
@@ -62,16 +89,7 @@ searchHandler.on("message:text", async (ctx, next) => {
   if (text.startsWith("/")) return next();
   if (PANEL_TEXTS.has(text)) return next();
 
-  const uid = ctx.from.id;
-
-  if (!isAdmin(uid)) {
-    const forceSub = await getBool(KEYS.forceSubEnabled, true);
-    if (forceSub) {
-      const ok = await ensureSubscribed(ctx, uid);
-      if (!ok) return;
-    }
-    await confirmReferral(ctx, uid);
-  }
+  if (!(await checkAccess(ctx))) return;
 
   // Kod bo'yicha
   if (/^\d+$/.test(text)) {
