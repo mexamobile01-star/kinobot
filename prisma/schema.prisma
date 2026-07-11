@@ -137,6 +137,19 @@ model ChannelEvent {
   @@map("channel_events")
 }
 
+// ===================== AI SARF-HISOBI (kunlik, provayder+model bo'yicha) =====================
+model AiUsage {
+  id       Int      @id @default(autoincrement())
+  provider String
+  model    String
+  day      String   // "YYYY-MM-DD" (UTC)
+  requests Int      @default(0)
+  tokens   Int      @default(0)
+
+  @@unique([provider, model, day])
+  @@map("ai_usage")
+}
+
 // ===================== KINO =====================
 model Movie {
   id          Int      @id @default(autoincrement())

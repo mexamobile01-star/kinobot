@@ -1,5 +1,6 @@
 import { Composer } from "grammy";
 import { prisma } from "../../prisma.js";
+import { adminCan } from "../../config.js";
 import { e } from "../../utils/emoji.js";
 import { ibtn, kb, aiActiveKeyboard, adminMenuKeyboard } from "../../utils/keyboard.js";
 import { aiEnabled, askAI } from "../../services/ai.js";
@@ -132,6 +133,7 @@ async function showDraftPreview(ctx: MyContext, draft: string) {
 }
 
 aiAdminHandler.hears(AI_BTN, async (ctx) => {
+  if (!adminCan(ctx.from!.id, "ai")) return;
   if (!aiEnabled()) {
     await ctx.reply("🤖 AI yordamchi hozircha sozlanmagan.");
     return;
@@ -147,6 +149,9 @@ aiAdminHandler.hears(AI_BTN, async (ctx) => {
     `Chiqish uchun <b>${AI_EXIT}</b> tugmasini bosing.`,
     { reply_markup: aiActiveKeyboard() }
   );
+  await ctx.reply("Sozlamalar:", {
+    reply_markup: kb([ibtn("⚙️ AI sozlamalari (model, limit)", "aiset:open", "primary")]),
+  });
 });
 
 aiAdminHandler.hears(AI_EXIT, async (ctx) => {

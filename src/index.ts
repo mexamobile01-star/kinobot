@@ -15,6 +15,7 @@ import { inlineHandler } from "./handlers/inline.js";
 import { referralHandler } from "./handlers/referral.js";
 import { aiUserHandler } from "./handlers/aiUser.js";
 import { startAutoBackup } from "./services/autoBackup.js";
+import { initAiUsageTracking } from "./services/aiUsage.js";
 
 // ===== Middleware: foydalanuvchini bazaga yozish =====
 bot.use(trackUser);
@@ -116,6 +117,9 @@ async function main() {
 
   // Avtomatik backup rejalashtiruvchi
   startAutoBackup(bot);
+
+  // AI sarf-hisobini DB'ga ulash
+  initAiUsageTracking();
 
   await bot.api.setMyCommands([
     { command: "start",   description: "Botni ishga tushirish" },

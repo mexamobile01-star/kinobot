@@ -14,6 +14,7 @@ import { joinStatsHandler } from "./joinStats.js";
 import { funnelHandler } from "./funnel.js";
 import { referralsHandler } from "./referrals.js";
 import { aiAdminHandler } from "./aiAdmin.js";
+import { aiSettingsHandler } from "./aiSettings.js";
 
 // Faqat adminlar uchun
 export const adminHandler = new Composer<MyContext>();
@@ -36,3 +37,4 @@ admin.use(joinStatsHandler);
 admin.use(funnelHandler);
 admin.use(referralsHandler);
 admin.use(aiAdminHandler);
+admin.use(aiSettingsHandler);
