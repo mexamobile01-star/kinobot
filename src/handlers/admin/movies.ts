@@ -20,6 +20,7 @@ function movieMenu() {
     [ibtn("Kino qo'shish", "mv:add", "success", BE.chAdd)],
     [ibtn("Ro'yxat", "mv:list:0", "primary", BE.chList), ibtn("O'chirish", "mv:del:0", "danger", BE.chDelete)],
     [ibtn("Knopka boshqaruvi", "mv:btnlist:0")],
+    [ibtn("📥 Manba kanallar (avto-olish)", "src:menu", "primary")],
     [ibtn("Menyuga qaytish", "mv:close", undefined, BE.backMenu)],
   );
 }

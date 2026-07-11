@@ -171,6 +171,16 @@ model ChannelEvent {
   @@map("channel_events")
 }
 
+// ===================== MANBA KANALLAR (avto-indekslash) =====================
+model SourceChannel {
+  id      Int      @id @default(autoincrement())
+  chatId  BigInt   @unique
+  title   String
+  addedAt DateTime @default(now())
+
+  @@map("source_channels")
+}
+
 // ===================== AI SARF-HISOBI (kunlik, provayder+model bo'yicha) =====================
 model AiUsage {
   id       Int      @id @default(autoincrement())

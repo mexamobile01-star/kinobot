@@ -17,6 +17,7 @@ import { aiUserHandler } from "./handlers/aiUser.js";
 import { premiumHandler } from "./handlers/premiumUser.js";
 import { startAutoBackup } from "./services/autoBackup.js";
 import { initAiUsageTracking } from "./services/aiUsage.js";
+import { indexVideoMovie } from "./services/ingest.js";
 
 // ===== Middleware: foydalanuvchini bazaga yozish =====
 bot.use(trackUser);
@@ -87,6 +88,24 @@ bot.on("chat_member", async (ctx) => {
   }
 });
 
+// ===== Manba kanallardan avto-indekslash (channel_post) =====
+bot.on("channel_post:video", async (ctx) => {
+  const chatId = ctx.chat.id;
+  const src = await prisma.sourceChannel.findUnique({ where: { chatId: BigInt(chatId) } });
+  if (!src) return; // faqat ro'yxatdagi manba kanallar
+
+  const v = ctx.msg.video;
+  if (!v) return;
+  const res = await indexVideoMovie({
+    fileId: v.file_id,
+    caption: ctx.msg.caption ?? null,
+    duration: v.duration ?? null,
+  });
+  if (res.status === "created") {
+    console.log(`📥 Manba kanaldan indekslandi: "${res.title}" (kod ${res.code}) — ${src.title}`);
+  }
+});
+
 // ===== Handler'lar (tartib muhim!) =====
 bot.use(adminHandler);      // admin panel (faqat adminlar)
 bot.use(startHandler);      // /start, obuna tekshiruvi, deep-link
@@ -145,6 +164,12 @@ async function main() {
 
   const me = await bot.api.getMe();
 
+  // Ikkala rejim uchun bir xil — chat_member va channel_post ham keladi
+  const ALLOWED_UPDATES = [
+    "message", "callback_query", "inline_query",
+    "chat_join_request", "chat_member", "channel_post",
+  ] as const;
+
   // ===== WEBHOOK rejimi (Cloud Run / server) =====
   const webhookUrl = process.env.WEBHOOK_URL;
   const useWebhook = process.env.USE_WEBHOOK === "true" || !!webhookUrl;
@@ -157,7 +182,7 @@ async function main() {
 
     await bot.api.setWebhook(webhookUrl, {
       secret_token: secret,
-      allowed_updates: ["message", "callback_query", "inline_query", "chat_join_request", "chat_member"],
+      allowed_updates: [...ALLOWED_UPDATES],
     });
 
     const handle = webhookCallback(bot, "http", {
@@ -169,10 +194,10 @@ async function main() {
       console.log(`🔗 Webhook URL: ${webhookUrl}`);
     });
   } else {
-    // ===== POLLING rejimi (lokal ishlatish) =====
+    // ===== POLLING rejimi (lokal / Railway) =====
     await bot.api.deleteWebhook();
     console.log(`🤖 @${me.username} polling rejimda ishga tushdi`);
-    run(bot);
+    run(bot, { runner: { fetch: { allowed_updates: [...ALLOWED_UPDATES] } } });
   }
 }
 
