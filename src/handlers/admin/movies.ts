@@ -7,6 +7,7 @@ import { ADMIN_MENU_BUTTONS, ibtn, BE, kb, cancelKeyboard, adminMenuKeyboard } f
 import { isValidUrl, resolveButtonStyle } from "../../utils/contentButton.js";
 import { getSetting, setSetting, getGlobalButton, getBool, setBool, KEYS } from "../../utils/settings.js";
 import { postToMovieChannel } from "../../services/movieChannel.js";
+import { aiEnabled, askGemini } from "../../services/ai.js";
 import type { MyContext } from "../../types.js";
 
 export const moviesHandler = new Composer<MyContext>();
@@ -84,11 +85,26 @@ export async function addMovie(conversation: Conversation<MyContext>, ctx: MyCon
     return titleCtx.reply("❌ Bekor qilindi.", { reply_markup: adminMenuKeyboard(ownerId) });
   const title = titleCtx.message?.text?.trim() || "Nomsiz";
 
-  await ctx.reply("4️⃣ Kino <b>janrini</b> kiriting. Masalan: <code>Jangari, Drama</code>");
+  await ctx.reply(
+    "4️⃣ Kino <b>janrini</b> kiriting. Masalan: <code>Jangari, Drama</code>\n\n" +
+    (aiEnabled() ? "🤖 AI aniqlashi uchun <code>ai</code> deb yozing." : "")
+  );
   const genreCtx = await conversation.wait();
   if (isCancel(genreCtx.message?.text))
     return genreCtx.reply("❌ Bekor qilindi.", { reply_markup: adminMenuKeyboard(ownerId) });
-  const genre = genreCtx.message?.text?.trim() || null;
+  let genre = genreCtx.message?.text?.trim() || null;
+
+  // AI bilan janrni avtomatik aniqlash
+  if (genre && genre.toLowerCase() === "ai") {
+    await ctx.reply("🤖 AI janrni aniqlamoqda...");
+    const aiGenre = await conversation.external(() =>
+      askGemini(
+        `"${title}" nomli kino qaysi janrga mansub? Faqat 1-3 ta janr nomini vergul bilan yoz, boshqa hech narsa yozma. O'zbekcha. Masalan: Jangari, Drama`,
+      )
+    );
+    genre = aiGenre?.trim().split("\n")[0]?.slice(0, 100) || null;
+    await ctx.reply(genre ? `🤖 Aniqlangan janr: <b>${e.escapeHtml(genre)}</b>` : "⚠️ AI aniqlay olmadi, janrsiz davom etamiz.");
+  }
 
   // 5️⃣ Qisqa (treyler) video — o'tkazib yuborish mumkin
   await ctx.reply(

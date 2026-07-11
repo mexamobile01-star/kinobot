@@ -115,6 +115,8 @@ export function userMenuKeyboard(): Keyboard {
   return new Keyboard()
     .text("Kino qidirish", { icon_custom_emoji_id: "5429571366384842791" })
     .text("Referal / pul ishlash")
+    .row()
+    .text("AI yordamchi")
     .resized();
 }
 

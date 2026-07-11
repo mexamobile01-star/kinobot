@@ -20,6 +20,7 @@ export const config = {
     ? Number(process.env.MOVIE_CHANNEL_ID)
     : null,
   usePremiumEmoji: (process.env.USE_PREMIUM_EMOJI ?? "true") === "true",
+  geminiApiKey: process.env.GEMINI_API_KEY ?? "",
 };
 
 // Dinamik admin Set — ownerlar + DB'dan yuklangan qo'shimcha adminlar

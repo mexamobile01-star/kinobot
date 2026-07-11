@@ -17,6 +17,8 @@ const PANEL_TEXTS = new Set([
   "🔄 Yangilash",
   "Kino qidirish",
   "Referal / pul ishlash",
+  "AI yordamchi",
+  "❌ Chiqish",
   "❌ Bekor qilish",
 ]);
 
