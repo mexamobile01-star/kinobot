@@ -47,6 +47,8 @@ export const KEYS = {
   serialBtnEnabled: "serial_btn_enabled",
   autoBackupEnabled: "auto_backup_enabled",
   lastBackupAt:      "last_backup_at",
+  aiUserModel:       "ai_user_model",   // "provider:model" — foydalanuvchi AI scope'i
+  aiAdminModel:      "ai_admin_model",  // "provider:model" — admin AI scope'i
 } as const;
 
 export async function getGlobalButton(prefix: "movie" | "serial") {

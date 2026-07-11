@@ -20,8 +20,13 @@ export const config = {
     ? Number(process.env.MOVIE_CHANNEL_ID)
     : null,
   usePremiumEmoji: (process.env.USE_PREMIUM_EMOJI ?? "true") === "true",
-  geminiApiKey: process.env.GEMINI_API_KEY ?? "",
-  groqApiKey: process.env.GROQ_API_KEY ?? "",
+  // AI provayder kalitlari (ixtiyoriy — qaysi biri bo'lsa o'sha ishlaydi)
+  geminiApiKey:     process.env.GEMINI_API_KEY ?? "",
+  groqApiKey:       process.env.GROQ_API_KEY ?? "",
+  openrouterApiKey: process.env.OPENROUTER_API_KEY ?? "",
+  cerebrasApiKey:   process.env.CEREBRAS_API_KEY ?? "",
+  githubModelsToken: process.env.GITHUB_MODELS_TOKEN ?? "",
+  mistralApiKey:    process.env.MISTRAL_API_KEY ?? "",
 };
 
 // Dinamik admin Set — ownerlar + DB'dan yuklangan qo'shimcha adminlar

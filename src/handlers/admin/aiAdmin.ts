@@ -2,7 +2,7 @@ import { Composer } from "grammy";
 import { prisma } from "../../prisma.js";
 import { e } from "../../utils/emoji.js";
 import { ibtn, kb, aiActiveKeyboard, adminMenuKeyboard } from "../../utils/keyboard.js";
-import { aiEnabled, askGemini } from "../../services/ai.js";
+import { aiEnabled, askAI } from "../../services/ai.js";
 import type { MyContext } from "../../types.js";
 
 export const aiAdminHandler = new Composer<MyContext>();
@@ -108,7 +108,7 @@ function adminSystemPrompt(stats: string, userInfo: string): string {
 
 async function askAdminAi(ctx: MyContext, prompt: string): Promise<string | null> {
   const stats = await buildAdminStats();
-  return askGemini(prompt, adminSystemPrompt(stats, buildAdminInfo(ctx)));
+  return askAI("admin", prompt, adminSystemPrompt(stats, buildAdminInfo(ctx)));
 }
 
 function extractBroadcast(answer: string): { display: string; draft: string | null } {

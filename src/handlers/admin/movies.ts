@@ -7,7 +7,7 @@ import { ADMIN_MENU_BUTTONS, ibtn, BE, kb, cancelKeyboard, adminMenuKeyboard } f
 import { isValidUrl, resolveButtonStyle } from "../../utils/contentButton.js";
 import { getSetting, setSetting, getGlobalButton, getBool, setBool, KEYS } from "../../utils/settings.js";
 import { postToMovieChannel } from "../../services/movieChannel.js";
-import { aiEnabled, askGemini } from "../../services/ai.js";
+import { aiEnabled, askAI } from "../../services/ai.js";
 import type { MyContext } from "../../types.js";
 
 export const moviesHandler = new Composer<MyContext>();
@@ -98,7 +98,7 @@ export async function addMovie(conversation: Conversation<MyContext>, ctx: MyCon
   if (genre && genre.toLowerCase() === "ai") {
     await ctx.reply("🤖 AI janrni aniqlamoqda...");
     const aiGenre = await conversation.external(() =>
-      askGemini(
+      askAI("admin",
         `"${title}" nomli kino qaysi janrga mansub? Faqat 1-3 ta janr nomini vergul bilan yoz, boshqa hech narsa yozma. O'zbekcha. Masalan: Jangari, Drama`,
       )
     );

@@ -5,7 +5,7 @@ import { e } from "../utils/emoji.js";
 import { ibtn, kb, userMenuKeyboard, aiActiveKeyboard } from "../utils/keyboard.js";
 import { ensureSubscribed } from "../utils/subscription.js";
 import { getBool, KEYS } from "../utils/settings.js";
-import { aiEnabled, askGemini } from "../services/ai.js";
+import { aiEnabled, askAI } from "../services/ai.js";
 import { sendMovie } from "../services/media.js";
 import { sendSerialSeasons } from "./serialView.js";
 import type { MyContext } from "../types.js";
@@ -294,7 +294,7 @@ aiUserHandler.on("message:text", async (ctx, next) => {
 
   await ctx.replyWithChatAction("typing").catch(() => {});
   const context = await buildContext(text);
-  const answer = await askGemini(text, systemPrompt(context, buildUserInfo(ctx)));
+  const answer = await askAI("user", text, systemPrompt(context, buildUserInfo(ctx)));
 
   if (!answer) {
     // reply_markup qo'yilmaydi — doimiy klaviatura AI rejimiga kirishda
