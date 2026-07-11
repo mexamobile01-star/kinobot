@@ -1,8 +1,8 @@
-import { Composer, Keyboard } from "grammy";
+import { Composer } from "grammy";
 import { prisma } from "../prisma.js";
 import { isAdmin } from "../config.js";
 import { e } from "../utils/emoji.js";
-import { userMenuKeyboard, ibtn, kb } from "../utils/keyboard.js";
+import { ibtn, kb } from "../utils/keyboard.js";
 import { ensureSubscribed } from "../utils/subscription.js";
 import { getBool, KEYS } from "../utils/settings.js";
 import { aiEnabled, askGemini } from "../services/ai.js";
@@ -13,7 +13,6 @@ import type { MyContext } from "../types.js";
 export const aiUserHandler = new Composer<MyContext>();
 
 export const AI_BTN = "AI yordamchi";
-const AI_EXIT = "❌ Chiqish";
 
 // Bot ma'lumotlari
 const ADMIN_CONTACT = "@akajon_00";
@@ -27,8 +26,12 @@ interface AiListItem {
   title: string;
 }
 
-function aiKeyboard() {
-  return new Keyboard().text(AI_EXIT).resized();
+// MUHIM: pastdagi doimiy (reply) klaviatura AI rejimida HAM o'zgarmaydi —
+// shuning uchun undan chiqish uchun har bir AI javobiga inline "❌ Chiqish"
+// tugmasi biriktiriladi. Aks holda (persistent keyboard almashtirilsa)
+// foydalanuvchida "klaviatura yopilib qolgandek" muammo paydo bo'ladi.
+function aiReplyMarkup() {
+  return kb([ibtn("❌ AI suhbatini tugatish", "ai:exit", "danger")]);
 }
 
 /** Mavjud kinolar va seriallar ro'yxatidan AI konteksti (m/s prefiksli kodlar) */
@@ -106,6 +109,8 @@ aiUserHandler.hears(AI_BTN, async (ctx) => {
   }
 
   ctx.session.scratch = { ...(ctx.session.scratch ?? {}), aiChat: true };
+  // Doimiy klaviatura O'ZGARMAYDI — foydalanuvchi istalgan payt boshqa
+  // menyu tugmasini (Kino qidirish va h.k.) bosishi yoki kod yozishi mumkin.
   await ctx.reply(
     `🤖 <b>AI yordamchi</b> — sizga xizmatda! ✨\n\n` +
     `Menga yozing:\n` +
@@ -114,15 +119,15 @@ aiUserHandler.hears(AI_BTN, async (ctx) => {
     `🎭 <i>"5 ta komediya tavsiya qil"</i>\n` +
     `💬 yoki istalgan savolingizni.\n\n` +
     `Men mos kinolarni topib, <b>to'g'ridan-to'g'ri yuborib</b> yoki chiroyli <b>tugmali ro'yxat</b> qilib beraman! 🎬\n\n` +
-    `Chiqish uchun <b>${AI_EXIT}</b>.`,
-    { reply_markup: aiKeyboard() }
+    `Kino kodini yuborsangiz — oddiy qidiruvga o'tasiz. Chiqish uchun pastdagi tugmani bosing.`,
+    { reply_markup: aiReplyMarkup() }
   );
 });
 
-aiUserHandler.hears(AI_EXIT, async (ctx) => {
-  if (!ctx.session.scratch?.aiChat) return;
+aiUserHandler.callbackQuery("ai:exit", async (ctx) => {
+  await ctx.answerCallbackQuery({ text: "AI suhbati tugatildi." });
   if (ctx.session.scratch) delete ctx.session.scratch.aiChat;
-  await ctx.reply("AI yordamchidan chiqdingiz. 👋", { reply_markup: userMenuKeyboard() });
+  await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
 });
 
 /** "m12" / "s7" ko'rinishidagi kod bo'yicha kino yoki serialni yuboradi */
@@ -226,13 +231,22 @@ aiUserHandler.on("message:text", async (ctx, next) => {
   const text = ctx.message.text.trim();
   if (text.startsWith("/")) { if (ctx.session.scratch) delete ctx.session.scratch.aiChat; return next(); }
 
+  // Aniq kino/serial kodi (faqat raqam) — foydalanuvchi AI'dan emas, oddiy
+  // qidiruvdan foydalanmoqchi. AI rejimidan jimgina chiqamiz (doimiy
+  // klaviatura hech qachon o'zgarmagani uchun buni ko'rsatish shart emas)
+  // va odatdagi qidiruv oqimiga o'tkazamiz.
+  if (/^\d+$/.test(text)) {
+    if (ctx.session.scratch) delete ctx.session.scratch.aiChat;
+    return next();
+  }
+
   await ctx.replyWithChatAction("typing").catch(() => {});
   const context = await buildContext();
   const answer = await askGemini(text, systemPrompt(context));
 
   if (!answer) {
     await ctx.reply("🤖 Kechirasiz, hozir javob bera olmadim. Birozdan keyin urinib ko'ring.", {
-      reply_markup: aiKeyboard(),
+      reply_markup: aiReplyMarkup(),
     });
     return;
   }
@@ -243,11 +257,11 @@ aiUserHandler.on("message:text", async (ctx, next) => {
     .replace(/\[SEND:[ms]?\d+\]/gi, "")
     .trim();
 
-  // AI matnini yuborish (HTML, xato bo'lsa oddiy matn)
+  // AI matnini yuborish (HTML, xato bo'lsa oddiy matn) — inline "chiqish" bilan
   if (display) {
-    await ctx.reply(display, { reply_markup: aiKeyboard() })
+    await ctx.reply(display, { reply_markup: aiReplyMarkup() })
       .catch(async () => {
-        await ctx.reply(e.escapeHtml(display), { reply_markup: aiKeyboard() });
+        await ctx.reply(e.escapeHtml(display), { reply_markup: aiReplyMarkup() });
       });
   }
 
