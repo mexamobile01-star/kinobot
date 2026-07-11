@@ -107,6 +107,12 @@ export function adminMenuKeyboard(userId?: number | bigint): Keyboard {
     kb.text(ADMIN_MENU_TEXT, { icon_custom_emoji_id: BE.admin }).row();
   }
 
+  // AI yordamchi — huquqi bo'lgan barcha adminlar uchun, ko'k rangda
+  if (adminCan(userId ?? 0, "ai")) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    kb.text("AI yordamchi", { icon_custom_emoji_id: "5258093637450866522", style: "primary" } as any).row();
+  }
+
   return kb.resized();
 }
 

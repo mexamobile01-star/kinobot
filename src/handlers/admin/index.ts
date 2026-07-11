@@ -13,6 +13,7 @@ import { adminsHandler } from "./admins.js";
 import { joinStatsHandler } from "./joinStats.js";
 import { funnelHandler } from "./funnel.js";
 import { referralsHandler } from "./referrals.js";
+import { aiAdminHandler } from "./aiAdmin.js";
 
 // Faqat adminlar uchun
 export const adminHandler = new Composer<MyContext>();
@@ -34,3 +35,4 @@ admin.use(adminsHandler);
 admin.use(joinStatsHandler);
 admin.use(funnelHandler);
 admin.use(referralsHandler);
+admin.use(aiAdminHandler);

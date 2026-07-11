@@ -260,9 +260,9 @@ aiUserHandler.on("message:text", async (ctx, next) => {
   const answer = await askGemini(text, systemPrompt(context, buildUserInfo(ctx)));
 
   if (!answer) {
-    await ctx.reply("🤖 Kechirasiz, hozir javob bera olmadim. Birozdan keyin urinib ko'ring.", {
-      reply_markup: aiActiveKeyboard(),
-    });
+    // reply_markup qo'yilmaydi — doimiy klaviatura AI rejimiga kirishda
+    // bir marta o'rnatilgan, har javobda qayta yuborish shart emas
+    await ctx.reply("🤖 Kechirasiz, hozir javob bera olmadim. Birozdan keyin urinib ko'ring.");
     return;
   }
 
@@ -272,11 +272,11 @@ aiUserHandler.on("message:text", async (ctx, next) => {
     .replace(/\[SEND:[ms]?\d+\]/gi, "")
     .trim();
 
-  // AI matnini yuborish (HTML, xato bo'lsa oddiy matn) — doimiy klaviatura bilan
+  // AI matnini yuborish (HTML, xato bo'lsa oddiy matn) — klaviatura qayta yuborilmaydi
   if (display) {
-    await ctx.reply(display, { reply_markup: aiActiveKeyboard() })
+    await ctx.reply(display)
       .catch(async () => {
-        await ctx.reply(e.escapeHtml(display), { reply_markup: aiActiveKeyboard() });
+        await ctx.reply(e.escapeHtml(display));
       });
   }
 
