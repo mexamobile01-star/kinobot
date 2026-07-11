@@ -1,14 +1,38 @@
 import { Composer } from "grammy";
 import type { InlineQueryResult } from "grammy/types";
 import { prisma } from "../prisma.js";
+import { isAdmin } from "../config.js";
 import { movieCaption } from "../services/media.js";
 import { getGlobalButton, getBool, KEYS } from "../utils/settings.js";
 import { contentButtonRow } from "../utils/contentButton.js";
+import { getUnsubscribedChannels } from "../utils/subscription.js";
 import type { MyContext } from "../types.js";
 
 export const inlineHandler = new Composer<MyContext>();
 
 inlineHandler.on("inline_query", async (ctx) => {
+  const uid = ctx.from.id;
+
+  // Majburiy obuna — boshqa chatlarda ham tekshiriladi (video "sizib chiqmasin")
+  if (!isAdmin(uid)) {
+    const forceSub = await getBool(KEYS.forceSubEnabled, true);
+    if (forceSub) {
+      const notJoined = await getUnsubscribedChannels(ctx, uid);
+      const blocking  = notJoined.filter((c) => c.type !== "INSTAGRAM");
+      if (blocking.length > 0) {
+        await ctx.answerInlineQuery([], {
+          cache_time: 0,
+          is_personal: true,
+          button: {
+            text: "🔒 Avval botga obuna bo'ling",
+            start_parameter: "start",
+          },
+        });
+        return;
+      }
+    }
+  }
+
   const q = ctx.inlineQuery.query.trim();
 
   const where = q
@@ -20,7 +44,7 @@ inlineHandler.on("inline_query", async (ctx) => {
   const movies = await prisma.movie.findMany({
     where,
     take: 25,
-    orderBy: q ? { views: "desc" } : { views: "desc" },
+    orderBy: { views: "desc" },
   });
 
   const enabled   = await getBool(KEYS.movieBtnEnabled, true);

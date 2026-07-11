@@ -15,7 +15,8 @@ const WELCOME =
   `Bu yerda eng sara kinolar va seriallar sizni kutmoqda.\n\n` +
   `<b>Kino kodini</b> yuboring — men uni darhol topib beraman.\n` +
   `Yoki kino <b>nomini</b> yozib qidiring.\n\n` +
-  `<tg-emoji emoji-id="5429571366384842791">🔎</tg-emoji> Masalan: <code>123</code>`;
+  `<tg-emoji emoji-id="5429571366384842791">🔎</tg-emoji> Masalan: <code>123</code>\n\n` +
+  `👇 Do'stlaringiz chatida ham qidirishingiz mumkin:`;
 
 async function deliverMovieByCode(ctx: MyContext, code: number): Promise<boolean> {
   const movie = await prisma.movie.findUnique({ where: { code } });
@@ -25,11 +26,13 @@ async function deliverMovieByCode(ctx: MyContext, code: number): Promise<boolean
 }
 
 async function sendWelcome(ctx: MyContext) {
-  await ctx.reply(WELCOME, { reply_markup: userMenuKeyboard() });
-  await ctx.reply(
-    `<tg-emoji emoji-id="5429571366384842791">🔎</tg-emoji> Do'stlaringiz chatida ham qidiring:`,
-    { reply_markup: new InlineKeyboard().switchInline("Inline qidiruv", "") }
-  );
+  // Inline qidiruv knopkasi welcome xabari bilan bitta xabarda chiqadi
+  await ctx.reply(WELCOME, {
+    reply_markup: new InlineKeyboard().switchInline("🔎 Inline qidiruv", ""),
+  });
+  // Pastdagi doimiy menyu (reply keyboard) alohida yuborilishi shart —
+  // Telegram bitta xabarga inline va reply keyboard'ni birga qo'ymaydi
+  await ctx.reply("👇 Menyu:", { reply_markup: userMenuKeyboard() });
 }
 
 startHandler.command("start", async (ctx) => {
