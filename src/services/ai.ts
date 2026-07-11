@@ -34,12 +34,17 @@ async function askGroq(userText: string, system?: string): Promise<string | null
         max_tokens: 800,
       }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`🤖 Groq xato: ${res.status} ${res.statusText} — ${body.slice(0, 500)}`);
+      return null;
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = await res.json();
     const text = data?.choices?.[0]?.message?.content;
     return typeof text === "string" ? text.trim() || null : null;
-  } catch {
+  } catch (err) {
+    console.error("🤖 Groq so'rov xatosi:", (err as Error).message);
     return null;
   }
 }
@@ -55,7 +60,11 @@ async function askGeminiApi(userText: string, system?: string): Promise<string |
         generationConfig: { temperature: 0.7, maxOutputTokens: 800 },
       }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`🤖 Gemini xato: ${res.status} ${res.statusText} — ${body.slice(0, 500)}`);
+      return null;
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = await res.json();
     const parts = data?.candidates?.[0]?.content?.parts;
@@ -63,7 +72,8 @@ async function askGeminiApi(userText: string, system?: string): Promise<string |
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const text = parts.map((p: any) => p.text ?? "").join("").trim();
     return text || null;
-  } catch {
+  } catch (err) {
+    console.error("🤖 Gemini so'rov xatosi:", (err as Error).message);
     return null;
   }
 }
@@ -72,6 +82,10 @@ async function askGeminiApi(userText: string, system?: string): Promise<string |
  * AI'ga so'rov yuboradi. Groq birinchi, keyin Gemini. Kalit yo'q/xato bo'lsa null.
  */
 export async function askGemini(userText: string, system?: string): Promise<string | null> {
+  if (!config.groqApiKey && !config.geminiApiKey) {
+    console.error("🤖 AI so'rovi keldi, lekin GROQ_API_KEY va GEMINI_API_KEY ikkalasi ham yo'q!");
+    return null;
+  }
   if (config.groqApiKey) {
     const r = await askGroq(userText, system);
     if (r) return r;
