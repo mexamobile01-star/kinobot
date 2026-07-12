@@ -117,27 +117,54 @@ interface AiResult {
   tokens: number;
 }
 
-// ─── OpenAI-mos so'rov ───────────────────────────────────────────────────────
-async function callOpenAI(p: Provider, model: string, userText: string, system?: string): Promise<AiResult | null> {
+export interface ChatMsg { role: "user" | "assistant"; content: string }
+
+export interface AiCallOpts {
+  system?: string;
+  history?: ChatMsg[];
+  userText: string;
+  imageDataUrl?: string; // "data:image/jpeg;base64,...."
+}
+
+// Vision-qobiliyatli modellar (ustuvorlik tartibida). Faqat kaliti bor bo'lsa ishlatiladi.
+const VISION_MODELS: { provider: ProviderId; model: string }[] = [
+  { provider: "openrouter", model: "google/gemini-2.0-flash-exp:free" },
+  { provider: "openrouter", model: "meta-llama/llama-3.2-11b-vision-instruct:free" },
+  { provider: "mistral",    model: "pixtral-12b-latest" },
+  { provider: "groq",       model: "meta-llama/llama-4-scout-17b-16e-instruct" },
+  { provider: "gemini",     model: "gemini-2.0-flash" },
+  { provider: "github",     model: "openai/gpt-4o-mini" },
+];
+
+function parseDataUrl(dataUrl: string): { mime: string; base64: string } | null {
+  const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  return m ? { mime: m[1], base64: m[2] } : null;
+}
+
+// ─── OpenAI-mos so'rov (tarix + rasm) ────────────────────────────────────────
+async function callOpenAI(p: Provider, model: string, opts: AiCallOpts): Promise<AiResult | null> {
   try {
+    // Oxirgi user xabar: rasm bo'lsa parts massivi, aks holda oddiy string
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let userContent: any = opts.userText;
+    if (opts.imageDataUrl) {
+      userContent = [
+        { type: "text", text: opts.userText },
+        { type: "image_url", image_url: { url: opts.imageDataUrl } },
+      ];
+    }
+    const messages = [
+      ...(opts.system ? [{ role: "system", content: opts.system }] : []),
+      ...(opts.history ?? []).map((m) => ({ role: m.role, content: m.content })),
+      { role: "user", content: userContent },
+    ];
+
     const res = await fetch(p.baseUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${p.key()}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          ...(system ? [{ role: "system", content: system }] : []),
-          { role: "user", content: userText },
-        ],
-        temperature: 0.7,
-        max_tokens: 800,
-      }),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${p.key()}` },
+      body: JSON.stringify({ model, messages, temperature: 0.7, max_tokens: 800 }),
     });
 
-    // rate-limit header'larini saqlaymiz
     const rl: Record<string, string> = {};
     for (const [k, v] of res.headers.entries()) {
       if (k.toLowerCase().startsWith("x-ratelimit")) rl[k] = v;
@@ -165,16 +192,29 @@ async function callOpenAI(p: Provider, model: string, userText: string, system?:
   }
 }
 
-// ─── Gemini so'rov ───────────────────────────────────────────────────────────
-async function callGemini(p: Provider, model: string, userText: string, system?: string): Promise<AiResult | null> {
+// ─── Gemini so'rov (tarix + rasm) ────────────────────────────────────────────
+async function callGemini(p: Provider, model: string, opts: AiCallOpts): Promise<AiResult | null> {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const contents: any[] = (opts.history ?? []).map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    }));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lastParts: any[] = [{ text: opts.userText }];
+    if (opts.imageDataUrl) {
+      const img = parseDataUrl(opts.imageDataUrl);
+      if (img) lastParts.push({ inlineData: { mimeType: img.mime, data: img.base64 } });
+    }
+    contents.push({ role: "user", parts: lastParts });
+
     const url = `${p.baseUrl}/${model}:generateContent?key=${p.key()}`;
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: userText }] }],
-        ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
+        contents,
+        ...(opts.system ? { systemInstruction: { parts: [{ text: opts.system }] } } : {}),
         generationConfig: { temperature: 0.7, maxOutputTokens: 800 },
       }),
     });
@@ -202,26 +242,14 @@ async function callGemini(p: Provider, model: string, userText: string, system?:
   }
 }
 
-async function callProvider(p: Provider, model: string, userText: string, system?: string): Promise<AiResult | null> {
+async function callProvider(p: Provider, model: string, opts: AiCallOpts): Promise<AiResult | null> {
   if (!p.key()) return null;
-  return p.style === "gemini"
-    ? callGemini(p, model, userText, system)
-    : callOpenAI(p, model, userText, system);
+  return p.style === "gemini" ? callGemini(p, model, opts) : callOpenAI(p, model, opts);
 }
 
-/**
- * Scope uchun sozlangan modelni oladi va so'raydi; bo'lmasa qolgan mavjud
- * provayderlar bo'ylab fallback qiladi. Har muvaffaqiyatli chaqiruv usage
- * hisoblagichga yoziladi (onUsage callback orqali — sikldan qochish uchun).
- */
-export async function askAI(scope: "user" | "admin", userText: string, system?: string): Promise<string | null> {
+/** Matn scope uchun sinov tartibi: sozlangan model + har mavjud provayder models[0] */
+async function buildTextOrder(scope: "user" | "admin"): Promise<{ p: Provider; model: string }[]> {
   const available = availableProviders();
-  if (available.length === 0) {
-    console.error("🤖 AI so'rovi keldi, lekin hech qanday provayder kaliti yo'q!");
-    return null;
-  }
-
-  // Sozlangan modelni birinchi sinaymiz
   const selected = await getSetting(scope === "admin" ? KEYS.aiAdminModel : KEYS.aiUserModel, "");
   const tried = new Set<string>();
   const order: { p: Provider; model: string }[] = [];
@@ -232,8 +260,6 @@ export async function askAI(scope: "user" | "admin", userText: string, system?: 
     const p = available.find((x) => x.id === pid);
     if (p && model) { order.push({ p, model }); tried.add(`${pid}:${model}`); }
   }
-
-  // Fallback: har mavjud provayderning birinchi modeli
   for (const p of available) {
     const model = p.models[0]?.id;
     if (!model) continue;
@@ -242,15 +268,49 @@ export async function askAI(scope: "user" | "admin", userText: string, system?: 
     order.push({ p, model });
     tried.add(kk);
   }
+  return order;
+}
 
+async function runChain(order: { p: Provider; model: string }[], opts: AiCallOpts): Promise<string | null> {
+  if (order.length === 0) {
+    console.error("🤖 AI so'rovi keldi, lekin mos provayder yo'q!");
+    return null;
+  }
   for (const { p, model } of order) {
-    const r = await callProvider(p, model, userText, system);
-    if (r) {
-      recordUsage(r.provider, r.model, r.tokens);
-      return r.text;
-    }
+    const r = await callProvider(p, model, opts);
+    if (r) { recordUsage(r.provider, r.model, r.tokens); return r.text; }
   }
   return null;
+}
+
+/** Ko'p bosqichli (tarixli) matn so'rovi */
+export async function askAIChat(scope: "user" | "admin", opts: AiCallOpts): Promise<string | null> {
+  const order = await buildTextOrder(scope);
+  return runChain(order, opts);
+}
+
+/** Oddiy bir martalik matn so'rovi (eski imzo saqlanadi) */
+export async function askAI(scope: "user" | "admin", userText: string, system?: string): Promise<string | null> {
+  return askAIChat(scope, { userText, system });
+}
+
+/** Rasm (vision) so'rovi — faqat vision-qobiliyatli mavjud modellar sinaladi */
+export async function askVision(opts: AiCallOpts): Promise<string | null> {
+  const order: { p: Provider; model: string }[] = [];
+  for (const vm of VISION_MODELS) {
+    const p = getProvider(vm.provider);
+    if (p && p.key()) order.push({ p, model: vm.model });
+  }
+  if (order.length === 0) {
+    console.error("🤖 Vision so'rovi keldi, lekin vision-qobiliyatli provayder kaliti yo'q!");
+    return null;
+  }
+  return runChain(order, opts);
+}
+
+/** Vision imkoniyati bormi (biror vision-provayder kaliti bor) */
+export function visionEnabled(): boolean {
+  return VISION_MODELS.some((vm) => { const p = getProvider(vm.provider); return p && !!p.key(); });
 }
 
 // ─── Usage tracking (B2'da DB'ga ulanadi; hozircha callback) ─────────────────

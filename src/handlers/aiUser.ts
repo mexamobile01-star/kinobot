@@ -3,7 +3,7 @@ import { prisma } from "../prisma.js";
 import { e } from "../utils/emoji.js";
 import { ibtn, kb, userMenuKeyboard, aiActiveKeyboard } from "../utils/keyboard.js";
 import { checkContentAccess } from "../utils/access.js";
-import { aiEnabled, askAI } from "../services/ai.js";
+import { aiEnabled, askAIChat, type ChatMsg } from "../services/ai.js";
 import { sendMovie } from "../services/media.js";
 import { sendSerialSeasons } from "./serialView.js";
 import type { MyContext } from "../types.js";
@@ -25,6 +25,23 @@ interface AiListItem {
 }
 
 const AI_EXIT = "❌ Chiqish";
+
+// ─── Suhbat xotirasi (session) — oxirgi 6 xabar (3 juft), token uchun cheklangan ─
+const HISTORY_MAX = 6;
+function getHistory(ctx: MyContext): ChatMsg[] {
+  const h = ctx.session.scratch?.aiHistory;
+  return Array.isArray(h) ? (h as ChatMsg[]) : [];
+}
+function pushHistory(ctx: MyContext, userText: string, assistantText: string) {
+  const h = getHistory(ctx);
+  h.push({ role: "user", content: userText });
+  h.push({ role: "assistant", content: assistantText });
+  const trimmed = h.slice(-HISTORY_MAX);
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), aiHistory: trimmed };
+}
+function clearHistory(ctx: MyContext) {
+  if (ctx.session.scratch) delete ctx.session.scratch.aiHistory;
+}
 
 type MovieCtx  = { code: number; title: string; genre: string | null; year: number | null; views: number };
 type SerialCtx = { code: number; title: string; genre: string | null; year: number | null };
@@ -151,9 +168,10 @@ aiUserHandler.hears(AI_BTN, async (ctx) => {
   if (!(await checkContentAccess(ctx, false))) return;
 
   ctx.session.scratch = { ...(ctx.session.scratch ?? {}), aiChat: true };
+  clearHistory(ctx); // yangi suhbat — tarix tozalanadi
   await ctx.reply(
     `🤖 <b>AI yordamchi</b> — sizga xizmatda! ✨\n\n` +
-    `Menga yozing:\n` +
+    `Menga yozing yoki <b>kino posterini/rasmini yuboring</b> — tanib beraman!\n` +
     `🔥 <i>"Eng zo'r jangari kinoni ber"</i>\n` +
     `🚀 <i>"Kosmos haqida kino bormi?"</i>\n` +
     `🎭 <i>"5 ta komediya tavsiya qil"</i>\n` +
@@ -167,6 +185,7 @@ aiUserHandler.hears(AI_BTN, async (ctx) => {
 aiUserHandler.hears(AI_EXIT, async (ctx) => {
   const wasActive = !!ctx.session.scratch?.aiChat;
   if (ctx.session.scratch) delete ctx.session.scratch.aiChat;
+  clearHistory(ctx);
   await ctx.reply(
     wasActive ? "AI yordamchidan chiqdingiz. 👋" : "Asosiy menyu:",
     { reply_markup: userMenuKeyboard() }
@@ -272,27 +291,33 @@ aiUserHandler.on("message:text", async (ctx, next) => {
   if (!ctx.session.scratch?.aiChat) return next();
 
   const text = ctx.message.text.trim();
-  if (text.startsWith("/")) { if (ctx.session.scratch) delete ctx.session.scratch.aiChat; return next(); }
+  if (text.startsWith("/")) { if (ctx.session.scratch) delete ctx.session.scratch.aiChat; clearHistory(ctx); return next(); }
 
   // Aniq kino/serial kodi (faqat raqam) — foydalanuvchi AI'dan emas, oddiy
   // qidiruvdan foydalanmoqchi. AI rejimidan jimgina chiqamiz va odatdagi
-  // qidiruv oqimiga o'tkazamiz (Kino qidirish/Referal tugmalari
-  // aiActiveKeyboard'da ham bor, shuning uchun funksional yo'qotish yo'q).
+  // qidiruv oqimiga o'tkazamiz.
   if (/^\d+$/.test(text)) {
     if (ctx.session.scratch) delete ctx.session.scratch.aiChat;
+    clearHistory(ctx);
     return next();
   }
 
   await ctx.replyWithChatAction("typing").catch(() => {});
   const context = await buildContext(text);
-  const answer = await askAI("user", text, systemPrompt(context, buildUserInfo(ctx)));
+  const history = getHistory(ctx);
+  const answer = await askAIChat("user", {
+    system: systemPrompt(context, buildUserInfo(ctx)),
+    history,
+    userText: text,
+  });
 
   if (!answer) {
-    // reply_markup qo'yilmaydi — doimiy klaviatura AI rejimiga kirishda
-    // bir marta o'rnatilgan, har javobda qayta yuborish shart emas
     await ctx.reply("🤖 Kechirasiz, hozir javob bera olmadim. Birozdan keyin urinib ko'ring.");
     return;
   }
+
+  // Suhbat tarixiga qo'shamiz (protokol teglarsiz)
+  pushHistory(ctx, text, answer);
 
   const listMatch = answer.match(/\[LIST:([^\]]+)\]/i);
   const display = answer
@@ -300,16 +325,11 @@ aiUserHandler.on("message:text", async (ctx, next) => {
     .replace(/\[SEND:[ms]?\d+\]/gi, "")
     .trim();
 
-  // AI matnini yuborish (HTML, xato bo'lsa oddiy matn) — klaviatura qayta yuborilmaydi
   if (display) {
-    await ctx.reply(display)
-      .catch(async () => {
-        await ctx.reply(e.escapeHtml(display));
-      });
+    await ctx.reply(display).catch(async () => { await ctx.reply(e.escapeHtml(display)); });
   }
 
   if (listMatch) {
-    // Bir nechta kino — chiroyli tugmali (sahifalangan) ro'yxat
     const rawCodes = listMatch[1].split(",").map((s) => s.trim()).filter(Boolean);
     const items = await resolveListItems(rawCodes);
     if (items.length) {
@@ -319,11 +339,11 @@ aiUserHandler.on("message:text", async (ctx, next) => {
     return;
   }
 
-  // Bitta/bir nechta [SEND:...] — to'g'ridan-to'g'ri yuborish (ko'pi bilan 5 ta)
+  // [SEND:...] — prefiks bor (m/s) yoki prefikssiz (default = kino)
   const codes: string[] = [];
-  const re = /\[SEND:([ms]\d+)\]/gi;
+  const re = /\[SEND:\s*([ms]?)(\d+)\]/gi;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(answer)) !== null) codes.push(m[1]);
+  while ((m = re.exec(answer)) !== null) codes.push(`${m[1] || "m"}${m[2]}`);
 
   const unique = [...new Set(codes)].slice(0, 5);
   for (const code of unique) {

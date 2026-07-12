@@ -3,7 +3,7 @@ import { prisma } from "../../prisma.js";
 import { adminCan } from "../../config.js";
 import { e } from "../../utils/emoji.js";
 import { ibtn, kb, aiActiveKeyboard, adminMenuKeyboard } from "../../utils/keyboard.js";
-import { aiEnabled, askAI } from "../../services/ai.js";
+import { aiEnabled, askAIChat, type ChatMsg } from "../../services/ai.js";
 import { AI_CONTROLLABLE, findControllable, applyControllable, getSetting } from "../../utils/settings.js";
 import type { MyContext } from "../../types.js";
 
@@ -133,9 +133,29 @@ function extractSettings(answer: string): { display: string; changes: { key: str
   return { display, changes };
 }
 
+// ─── Suhbat xotirasi (admin) — oxirgi 6 xabar ───────────────────────────────
+const ADMIN_HISTORY_MAX = 6;
+function getAdminHistory(ctx: MyContext): ChatMsg[] {
+  const h = ctx.session.scratch?.aiAdminHistory;
+  return Array.isArray(h) ? (h as ChatMsg[]) : [];
+}
+function pushAdminHistory(ctx: MyContext, userText: string, assistantText: string) {
+  const h = getAdminHistory(ctx);
+  h.push({ role: "user", content: userText });
+  h.push({ role: "assistant", content: assistantText });
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), aiAdminHistory: h.slice(-ADMIN_HISTORY_MAX) };
+}
+function clearAdminHistory(ctx: MyContext) {
+  if (ctx.session.scratch) delete ctx.session.scratch.aiAdminHistory;
+}
+
 async function askAdminAi(ctx: MyContext, prompt: string): Promise<string | null> {
   const stats = await buildAdminStats();
-  return askAI("admin", prompt, adminSystemPrompt(stats, buildAdminInfo(ctx)));
+  return askAIChat("admin", {
+    system: adminSystemPrompt(stats, buildAdminInfo(ctx)),
+    history: getAdminHistory(ctx),
+    userText: prompt,
+  });
 }
 
 function extractBroadcast(answer: string): { display: string; draft: string | null } {
@@ -165,6 +185,7 @@ aiAdminHandler.hears(AI_BTN, async (ctx) => {
     return;
   }
   ctx.session.scratch = { ...(ctx.session.scratch ?? {}), aiAdminChat: true };
+  clearAdminHistory(ctx);
   await ctx.reply(
     `🤖 <b>Admin AI yordamchi</b> — cheklovsiz xizmatingizda! ✨\n\n` +
     `Men bilan erkin suhbatlashing:\n` +
@@ -187,6 +208,7 @@ aiAdminHandler.hears(AI_EXIT, async (ctx) => {
     delete ctx.session.scratch.aiAdminDraft;
     delete ctx.session.scratch.aiAdminAwaitingFeedback;
   }
+  clearAdminHistory(ctx);
   await ctx.reply(
     wasActive ? "AI yordamchidan chiqdingiz. 👋" : "Asosiy menyu:",
     { reply_markup: adminMenuKeyboard(ctx.from!.id) }
@@ -197,7 +219,7 @@ aiAdminHandler.on("message:text", async (ctx, next) => {
   if (!ctx.session.scratch?.aiAdminChat) return next();
 
   const text = ctx.message.text.trim();
-  if (text.startsWith("/")) { if (ctx.session.scratch) delete ctx.session.scratch.aiAdminChat; return next(); }
+  if (text.startsWith("/")) { if (ctx.session.scratch) delete ctx.session.scratch.aiAdminChat; clearAdminHistory(ctx); return next(); }
 
   // Qoralamaga fikr bildirish rejimi
   if (ctx.session.scratch?.aiAdminAwaitingFeedback) {
@@ -223,6 +245,8 @@ aiAdminHandler.on("message:text", async (ctx, next) => {
     await ctx.reply("🤖 Kechirasiz, hozir javob bera olmadim. Birozdan keyin urinib ko'ring.");
     return;
   }
+
+  pushAdminHistory(ctx, text, answer);
 
   // Avval sozlama o'zgarishlarini ajratamiz, keyin broadcastni
   const { display: afterSettings, changes } = extractSettings(answer);
