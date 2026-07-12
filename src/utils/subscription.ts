@@ -121,7 +121,7 @@ export async function sendSubscriptionPrompt(
   if (await getBool(KEYS.premiumEnabled, false)) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (kb as any).inline_keyboard.push([{
-      text: "Premium obuna — obunasiz foydalanish",
+      text: "Premium obuna olish",
       callback_data: "prem:show",
       icon_custom_emoji_id: "5211179692496808774",
     }]);

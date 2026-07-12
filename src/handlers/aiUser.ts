@@ -159,7 +159,7 @@ function systemPrompt(context: string, userInfo: string): string {
   );
 }
 
-aiUserHandler.hears(AI_BTN, async (ctx) => {
+async function enterAiChat(ctx: MyContext): Promise<void> {
   if (!aiEnabled()) {
     await ctx.reply("🤖 AI yordamchi hozircha sozlanmagan. Keyinroq urinib ko'ring.");
     return;
@@ -181,6 +181,14 @@ aiUserHandler.hears(AI_BTN, async (ctx) => {
     `Chiqish uchun <b>${AI_EXIT}</b> tugmasini bosing.`,
     { reply_markup: aiActiveKeyboard() }
   );
+}
+
+aiUserHandler.hears(AI_BTN, enterAiChat);
+
+// Start xabaridagi "AI yordamchi" inline tugmasi
+aiUserHandler.callbackQuery("ai:enter", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await enterAiChat(ctx);
 });
 
 aiUserHandler.hears(AI_EXIT, async (ctx) => {

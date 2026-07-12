@@ -4,7 +4,7 @@ import { adminCan } from "../../config.js";
 import { e } from "../../utils/emoji.js";
 import { ADMIN_MENU_BUTTONS, adminMenuKeyboard, ibtn, kb, BE } from "../../utils/keyboard.js";
 import { getBool, setBool, getSetting, setSetting, KEYS } from "../../utils/settings.js";
-import { grantPremium } from "../../utils/premium.js";
+import { grantPremium, seedDefaultTariffs } from "../../utils/premium.js";
 import type { MyContext } from "../../types.js";
 
 export const premiumAdminHandler = new Composer<MyContext>();
@@ -175,18 +175,11 @@ premiumAdminHandler.callbackQuery("prm:tariffs", async (ctx) => {
 
 // Namuna tariflar (placeholder narx bilan — admin tahrirlaydi)
 premiumAdminHandler.callbackQuery("prm:tseed", async (ctx) => {
-  const count = await prisma.tariff.count();
-  if (count > 0) { await ctx.answerCallbackQuery({ text: "Tariflar allaqachon bor.", show_alert: true }); return; }
-  // 3 ta tarif — kunlik narx uzoq muddatda arzonlashadi (1 yil eng foydali).
-  // 1 oy: 833 so'm/kun · 3 oy: 667 so'm/kun (~20% arzon) · 1 yil: 493 so'm/kun (~41% arzon)
-  await prisma.tariff.createMany({
-    data: [
-      { label: "1 oy",  days: 30,  price: 25000,  sortOrder: 0 },
-      { label: "3 oy",  days: 90,  price: 60000,  sortOrder: 1 },
-      { label: "1 yil", days: 365, price: 180000, sortOrder: 2 },
-    ],
+  const added = await seedDefaultTariffs();
+  await ctx.answerCallbackQuery({
+    text: added ? "✨ 3 ta namuna tarif qo'shildi. Narxlarni tahrirlang." : "Tariflar allaqachon bor.",
+    show_alert: true,
   });
-  await ctx.answerCallbackQuery({ text: "✨ 3 ta namuna tarif qo'shildi. Narxlarni tahrirlang.", show_alert: true });
   await renderTariffs(ctx);
 });
 
@@ -242,7 +235,9 @@ premiumAdminHandler.callbackQuery("prm:settings", async (ctx) => {
 premiumAdminHandler.callbackQuery("prm:toggle", async (ctx) => {
   const cur = await getBool(KEYS.premiumEnabled, false);
   await setBool(KEYS.premiumEnabled, !cur);
-  await ctx.answerCallbackQuery({ text: !cur ? "🟢 Premium tizimi yoqildi" : "🔴 O'chirildi", show_alert: true });
+  // Yoqilganda tarif bo'lmasa — standart 3 tarifni avtomatik qo'shamiz
+  if (!cur) await seedDefaultTariffs();
+  await ctx.answerCallbackQuery({ text: !cur ? "🟢 Premium tizimi yoqildi (tariflar tayyor)" : "🔴 O'chirildi", show_alert: true });
   const { text, markup } = await settingsData();
   await ctx.editMessageText(text, { reply_markup: markup }).catch(() => {});
 });

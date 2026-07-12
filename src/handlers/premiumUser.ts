@@ -4,14 +4,19 @@ import { config } from "../config.js";
 import { e } from "../utils/emoji.js";
 import { ibtn, kb } from "../utils/keyboard.js";
 import { getSetting, KEYS } from "../utils/settings.js";
-import { activeTariffs, isPremiumActive } from "../utils/premium.js";
+import { activeTariffs, isPremiumActive, premiumEnabled, seedDefaultTariffs } from "../utils/premium.js";
 import type { MyContext } from "../types.js";
 
 export const premiumHandler = new Composer<MyContext>();
 
 /** Premium taklifi xabari (limit tugaganda yoki /premium orqali) */
 export async function sendPremiumPrompt(ctx: MyContext, reason?: string): Promise<void> {
-  const tariffs = await activeTariffs();
+  let tariffs = await activeTariffs();
+  // Premium yoqilgan-u tarif yo'q bo'lsa — standart tariflarni avtomatik qo'shamiz
+  if (tariffs.length === 0 && (await premiumEnabled())) {
+    await seedDefaultTariffs();
+    tariffs = await activeTariffs();
+  }
 
   const head =
     `<tg-emoji emoji-id="5258093637450866522">💎</tg-emoji> <b>Premium obuna</b>\n\n` +

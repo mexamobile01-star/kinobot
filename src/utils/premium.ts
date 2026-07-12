@@ -34,3 +34,21 @@ export async function grantPremium(userId: bigint, days: number): Promise<Date> 
 export function activeTariffs() {
   return prisma.tariff.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } });
 }
+
+/**
+ * Standart 3 ta tarifni qo'shadi (agar hech qanday tarif bo'lmasa).
+ * Narxlar: kunlik xarajat uzoq muddatda arzonlashadi (1 yil eng foydali).
+ * 1 oy: 833 so'm/kun · 3 oy: 667 so'm/kun (~20% arzon) · 1 yil: 493 so'm/kun (~41% arzon)
+ */
+export async function seedDefaultTariffs(): Promise<boolean> {
+  const count = await prisma.tariff.count();
+  if (count > 0) return false;
+  await prisma.tariff.createMany({
+    data: [
+      { label: "1 oy",  days: 30,  price: 25000,  sortOrder: 0 },
+      { label: "3 oy",  days: 90,  price: 60000,  sortOrder: 1 },
+      { label: "1 yil", days: 365, price: 180000, sortOrder: 2 },
+    ],
+  });
+  return true;
+}

@@ -1,7 +1,7 @@
 import { Composer } from "grammy";
 import { prisma } from "../prisma.js";
 import { isAdmin } from "../config.js";
-import { adminMenuKeyboard, userMenuKeyboard, kb } from "../utils/keyboard.js";
+import { adminMenuKeyboard, kb } from "../utils/keyboard.js";
 import { getUnsubscribedChannels } from "../utils/subscription.js";
 import { checkContentAccess } from "../utils/access.js";
 import { attachReferrer, confirmReferral } from "../utils/referral.js";
@@ -20,6 +20,9 @@ const WELCOME =
 function welcomeKeyboard() {
   return kb(
     [
+      { text: "AI yordamchi", callback_data: "ai:enter", icon_custom_emoji_id: "5258093637450866522" },
+    ],
+    [
       { text: "Referal", callback_data: "start:referal", icon_custom_emoji_id: "5258513401784573443" },
       { text: "Mashhur", callback_data: "popular:page:0", icon_custom_emoji_id: "5258391252914676042" },
     ],
@@ -37,13 +40,10 @@ async function deliverMovieByCode(ctx: MyContext, code: number): Promise<boolean
   return true;
 }
 
-// MUHIM: bitta xabarga inline va doimiy (reply) klaviatura birga qo'yilmaydi —
-// Telegram cheklovi. Shuning uchun ikkita xabar ketma-ket (kechiktirmasdan)
-// yuboriladi: birinchisi buyruq tugmalari bilan, ikkinchisi doimiy klaviaturani
-// o'rnatish uchun — aks holda foydalanuvchida klaviatura "yopilib qolgandek" ko'rinadi.
+// Bitta qisqa welcome — buyruq tugmalari (AI, Referal, Mashhur, Random, Kanal)
+// inline ko'rinishda. Alohida "menyu" xabari yuborilmaydi.
 async function sendWelcome(ctx: MyContext) {
   await ctx.reply(WELCOME, { reply_markup: welcomeKeyboard() });
-  await ctx.reply("👇 Asosiy menyu:", { reply_markup: userMenuKeyboard() });
 }
 
 startHandler.command("start", async (ctx) => {
