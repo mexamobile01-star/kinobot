@@ -6,6 +6,7 @@ import { movieCaption } from "../services/media.js";
 import { getGlobalButton, getBool, KEYS } from "../utils/settings.js";
 import { contentButtonRow } from "../utils/contentButton.js";
 import { getUnsubscribedChannels } from "../utils/subscription.js";
+import { e } from "../utils/emoji.js";
 import type { MyContext } from "../types.js";
 
 export const inlineHandler = new Composer<MyContext>();
@@ -34,6 +35,35 @@ inlineHandler.on("inline_query", async (ctx) => {
   }
 
   const q = ctx.inlineQuery.query.trim();
+
+  // Referal taklifi — do'stga chiroyli, tugmali xabar sifatida yuboriladi
+  const refMatch = q.match(/^ref_(\d+)$/);
+  if (refMatch) {
+    const refId = refMatch[1];
+    const link = `https://t.me/${ctx.me.username}?start=ref_${refId}`;
+    const inviter = await prisma.user.findUnique({ where: { id: BigInt(refId) } });
+    const inviterName = inviter?.firstName?.trim() || "Do'stingiz";
+
+    await ctx.answerInlineQuery(
+      [
+        {
+          type: "article",
+          id: `ref${refId}`,
+          title: "🎬 Kino vaqti botiga taklif",
+          description: `${inviterName} sizni taklif qilmoqda — minglab kino va serial, bepul!`,
+          input_message_content: {
+            message_text:
+              `<tg-emoji emoji-id="5258077307985207053">🎬</tg-emoji> <b>${e.escapeHtml(inviterName)}</b> sizni <b>Kino vaqti</b> botiga taklif qilmoqda!\n\n` +
+              `Minglab kino va serial — bepul va tez. 🍿`,
+            parse_mode: "HTML",
+          },
+          reply_markup: { inline_keyboard: [[{ text: "🎬 Botni ochish", url: link }]] },
+        },
+      ],
+      { cache_time: 0, is_personal: true }
+    );
+    return;
+  }
 
   const where = q
     ? /^\d+$/.test(q)

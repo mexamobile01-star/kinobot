@@ -41,13 +41,15 @@ async function renderTop(ctx: MyContext, page: number, edit: boolean) {
     return;
   }
 
-  const rows: ReturnType<typeof ibtn>[][] = [];
+  const flat: ReturnType<typeof ibtn>[] = [];
   for (const g of grouped) {
     const refId = g.referredById!;
     const u = await prisma.user.findUnique({ where: { id: refId } });
     const name = u?.firstName || (u?.username ? `@${u.username}` : `ID ${refId}`);
-    rows.push([ibtn(`${name} — ${g._count.id} ta`, `ref:view:${refId}`, "primary")]);
+    flat.push(ibtn(`${name} — ${g._count.id} ta`, `ref:view:${refId}`));
   }
+  const rows: ReturnType<typeof ibtn>[][] = [];
+  for (let i = 0; i < flat.length; i += 2) rows.push(flat.slice(i, i + 2));
 
   const pages = Math.ceil(totalReferrers / PAGE);
   const nav: ReturnType<typeof ibtn>[] = [];

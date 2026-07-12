@@ -229,8 +229,14 @@ channelsHandler.callbackQuery(/^ch:editlabel:(\d+)$/, async (ctx) => {
     `Hozirgi: <b>${ch.buttonLabel ?? "(standart)"}</b>\n\n` +
     `Masalan: <code>📢 Asosiy kanal</code>\n` +
     `Standartga qaytarish uchun: <code>-</code>`,
-    { reply_markup: kb([ibtn("Bekor qilish", "ch:menu", "danger")]) }
+    { reply_markup: kb([ibtn("Bekor qilish", "ch:editlabel:cancel", "danger")]) }
   );
+});
+
+channelsHandler.callbackQuery("ch:editlabel:cancel", async (ctx) => {
+  await ctx.answerCallbackQuery({ text: "❌ Bekor qilindi." });
+  if (ctx.session.scratch) delete ctx.session.scratch.editChannelLabel;
+  await refreshMenu(ctx);
 });
 
 // ============ KNOPKA SOZLAMALARI ============

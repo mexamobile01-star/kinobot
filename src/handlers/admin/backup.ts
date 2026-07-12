@@ -22,7 +22,7 @@ async function backupMenuWithBack() {
       "backup:autotoggle",
       auto ? "success" : "danger"
     )],
-    [ibtn("Orqaga",   "botset:menu",   undefined, BE.backMenu)],
+    [ibtn("Orqaga",   "botset:back",   undefined, BE.backMenu)],
   );
 }
 

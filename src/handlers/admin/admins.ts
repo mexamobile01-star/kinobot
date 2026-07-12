@@ -74,7 +74,7 @@ async function renderAdminMenu(ctx: MyContext, edit = false) {
     [ibtn("Telegramdan tanlash", "adm:telegram", "success")],
     [ibtn("ID yoki username orqali", "adm:add", "primary")],
     [ibtn("Adminlar ro'yxati", "adm:list:0", "primary")],
-    [ibtn("Orqaga", "botset:menu")],
+    [ibtn("Orqaga", "botset:back")],
   );
 
   if (edit) {

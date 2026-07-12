@@ -44,7 +44,7 @@ statisticsHandler.hears(ADMIN_MENU_BUTTONS.stats, async (ctx) => {
       topMovies
         .map(
           (m, i) =>
-            `${i + 1}. ${e.escapeHtml(m.title)} (<code>${m.code}</code>) — ${m.views} 👁`
+            `${i + 1}. ${e.escapeHtml(m.title)} (<code>${m.code}</code>) — ${m.views} ${ce("views")}`
         )
         .join("\n");
   }
@@ -53,11 +53,11 @@ statisticsHandler.hears(ADMIN_MENU_BUTTONS.stats, async (ctx) => {
     `${ce("chart")} <b>Bot statistikasi</b>\n` +
       `━━━━━━━━━━━━━━━\n` +
       `${ce("stats")} Foydalanuvchilar: <b>${users}</b>\n` +
-      `🚫 Bloklangan: <b>${blocked}</b>\n` +
+      `${ce("blocked")} Bloklangan: <b>${blocked}</b>\n` +
       `${ce("film")} Kinolar: <b>${movies}</b>\n` +
       `${ce("tv")} Seriallar: <b>${serials}</b> (${episodes} qism)\n` +
-      `📢 Faol kanallar: <b>${channels}</b>\n` +
-      `👁 Jami ko'rishlar: <b>${totalViews}</b>\n` +
+      `${ce("channel")} Faol kanallar: <b>${channels}</b>\n` +
+      `${ce("views")} Jami ko'rishlar: <b>${totalViews}</b>\n` +
       top
   );
 });

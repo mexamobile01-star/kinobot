@@ -25,6 +25,9 @@ export const EMOJI_IDS = {
   subCheck: "5861665979968262792",
   botName: "5258077307985207053",
   search: "5429571366384842791",
+  blocked: "5260249440450520061",
+  views: "5258096772776991776",
+  channel: "5260268501515377807",
 } as const;
 
 const FALLBACK: Record<keyof typeof EMOJI_IDS, string> = {
@@ -44,6 +47,9 @@ const FALLBACK: Record<keyof typeof EMOJI_IDS, string> = {
   subCheck: "✅",
   botName: "🎬",
   search: "🔎",
+  blocked: "🚫",
+  views: "👁",
+  channel: "📢",
 };
 
 function escapeHtml(s: string): string {

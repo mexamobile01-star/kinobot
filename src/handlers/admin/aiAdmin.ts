@@ -196,9 +196,6 @@ aiAdminHandler.hears(AI_BTN, async (ctx) => {
     `Chiqish uchun <b>${AI_EXIT}</b> tugmasini bosing.`,
     { reply_markup: aiActiveKeyboard() }
   );
-  await ctx.reply("Sozlamalar:", {
-    reply_markup: kb([ibtn("⚙️ AI sozlamalari (model, limit)", "aiset:open", "primary")]),
-  });
 });
 
 aiAdminHandler.hears(AI_EXIT, async (ctx) => {

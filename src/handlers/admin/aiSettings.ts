@@ -1,6 +1,6 @@
 import { Composer } from "grammy";
 import { adminCan } from "../../config.js";
-import { ibtn, kb, BE } from "../../utils/keyboard.js";
+import { ibtn, kb, BE, BOT_SETTINGS_TEXT } from "../../utils/keyboard.js";
 import { getSetting, setSetting, KEYS } from "../../utils/settings.js";
 import {
   PROVIDERS, availableProviders, rateLimitSnapshot, lastProviderError,
@@ -70,7 +70,7 @@ async function renderPanel(ctx: MyContext, edit: boolean) {
       ibtn("🛡 Admin modeli", "aiset:scope:a", "primary"),
     ],
     [ibtn("🔄 Yangilash", "aiset:open", "success")],
-    [ibtn("Orqaga", "botset:menu", undefined, BE.backMenu)],
+    [ibtn("Orqaga", "botset:back", undefined, BE.backMenu)],
   ];
   if (avail.length === 0) {
     lines.push("", "⚠️ Hech qanday AI provayder kaliti sozlanmagan.");
@@ -80,6 +80,11 @@ async function renderPanel(ctx: MyContext, edit: boolean) {
   if (edit) await ctx.editMessageText(text, { reply_markup: kb(...rows) }).catch(() => {});
   else await ctx.reply(text, { reply_markup: kb(...rows) });
 }
+
+aiSettingsHandler.hears(BOT_SETTINGS_TEXT.ai, async (ctx) => {
+  if (!adminCan(ctx.from!.id, "ai")) return;
+  await renderPanel(ctx, false);
+});
 
 aiSettingsHandler.callbackQuery("aiset:open", async (ctx) => {
   if (!adminCan(ctx.from.id, "ai")) { await ctx.answerCallbackQuery(); return; }
