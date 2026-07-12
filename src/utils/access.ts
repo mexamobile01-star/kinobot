@@ -1,12 +1,13 @@
 import { prisma } from "../prisma.js";
 import { isAdmin } from "../config.js";
 import { ensureSubscribed } from "./subscription.js";
-import { getBool, KEYS } from "./settings.js";
+import { getBool, getSetting, KEYS } from "./settings.js";
 import { isPremiumActive, premiumEnabled, getFreeLimits } from "./premium.js";
 import { sendPremiumPrompt } from "../handlers/premiumUser.js";
 import type { MyContext } from "../types.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const today = () => new Date().toISOString().slice(0, 10);
 
 /**
  * Kontentga ruxsatni tekshiradi.
@@ -59,6 +60,45 @@ export async function checkContentAccess(ctx: MyContext, count = true): Promise<
         requestCount: { increment: 1 },
         ...(user?.firstRequestAt ? {} : { firstRequestAt: new Date() }),
       },
+    }).catch(() => null);
+  }
+
+  return true;
+}
+
+/**
+ * AI xizmatiga ruxsat (premium funksiya).
+ * - Admin/premium → cheksiz.
+ * - Aks holda: premium tizimi + freeAiLimit>0 bo'lsa kunlik AI limiti (kun o'zgarsa reset).
+ * `count=true` bo'lsa AI so'rovi hisoblanadi. false qaytsa — premium taklifi ko'rsatilgan.
+ */
+export async function checkAiAccess(ctx: MyContext, count = true): Promise<boolean> {
+  const uid = ctx.from!.id;
+  if (isAdmin(uid)) return true;
+
+  const user = await prisma.user.findUnique({ where: { id: BigInt(uid) } });
+  if (isPremiumActive(user?.premiumUntil)) return true;
+
+  if (!(await premiumEnabled())) return true;
+
+  const limit = parseInt(await getSetting(KEYS.freeAiLimit, "0"), 10) || 0;
+  if (limit <= 0) return true; // AI limiti o'chirilgan — cheklovsiz
+
+  const day = today();
+  const usedToday = user?.aiRequestDay === day ? (user?.aiRequestCount ?? 0) : 0;
+
+  if (usedToday >= limit) {
+    await sendPremiumPrompt(ctx, `🤖 Bugungi bepul AI so'rovlaringiz (${limit} ta) tugadi. Premium bilan cheksiz!`);
+    return false;
+  }
+
+  if (count) {
+    await prisma.user.update({
+      where: { id: BigInt(uid) },
+      data:
+        user?.aiRequestDay === day
+          ? { aiRequestCount: { increment: 1 } }
+          : { aiRequestDay: day, aiRequestCount: 1 },
     }).catch(() => null);
   }
 

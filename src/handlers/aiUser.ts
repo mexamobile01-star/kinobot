@@ -2,7 +2,7 @@ import { Composer } from "grammy";
 import { prisma } from "../prisma.js";
 import { e } from "../utils/emoji.js";
 import { ibtn, kb, userMenuKeyboard, aiActiveKeyboard } from "../utils/keyboard.js";
-import { checkContentAccess } from "../utils/access.js";
+import { checkContentAccess, checkAiAccess } from "../utils/access.js";
 import { aiEnabled, askAIChat, askVision, visionEnabled, type ChatMsg } from "../services/ai.js";
 import { config } from "../config.js";
 import { sendMovie } from "../services/media.js";
@@ -303,6 +303,9 @@ aiUserHandler.on("message:text", async (ctx, next) => {
     return next();
   }
 
+  // AI so'rovi limiti (premium funksiya) — har xabar hisoblanadi
+  if (!(await checkAiAccess(ctx))) return;
+
   await ctx.replyWithChatAction("typing").catch(() => {});
   const context = await buildContext(text);
   const history = getHistory(ctx);
@@ -361,8 +364,8 @@ aiUserHandler.on("message:photo", async (ctx, next) => {
     return;
   }
 
-  // Obuna/premium tekshiruvi (so'rov hisoblanadi)
-  if (!(await checkContentAccess(ctx))) return;
+  // AI so'rovi limiti (rasm ham AI so'rovi sifatida hisoblanadi)
+  if (!(await checkAiAccess(ctx))) return;
 
   await ctx.replyWithChatAction("typing").catch(() => {});
 

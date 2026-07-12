@@ -156,16 +156,37 @@ premiumAdminHandler.callbackQuery(/^prm:reject:(\d+)$/, async (ctx) => {
 });
 
 // ─── Tariflar ────────────────────────────────────────────────────────────────
-premiumAdminHandler.callbackQuery("prm:tariffs", async (ctx) => {
-  await ctx.answerCallbackQuery();
+async function renderTariffs(ctx: MyContext) {
   const tariffs = await prisma.tariff.findMany({ orderBy: { sortOrder: "asc" } });
   const lines = tariffs.length
     ? tariffs.map((t) => `${t.isActive ? "🟢" : "🔴"} <b>${e.escapeHtml(t.label)}</b> — ${t.price.toLocaleString("ru-RU")} so'm · ${t.days} kun`).join("\n")
     : "Hozircha tarif yo'q.";
   const rows = tariffs.map((t) => [ibtn(`🗑 ${t.label}`, `prm:tdel:${t.id}`, "danger")]);
   rows.push([ibtn("➕ Tarif qo'shish", "prm:tadd", "success")]);
+  if (tariffs.length === 0) rows.push([ibtn("✨ Namuna tariflar qo'shish", "prm:tseed", "primary")]);
   rows.push([ibtn("Orqaga", "prm:menu", undefined, BE.backMenu)]);
   await ctx.editMessageText(`🏷 <b>Tariflar</b>\n\n${lines}`, { reply_markup: kb(...rows) }).catch(() => {});
+}
+
+premiumAdminHandler.callbackQuery("prm:tariffs", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await renderTariffs(ctx);
+});
+
+// Namuna tariflar (placeholder narx bilan — admin tahrirlaydi)
+premiumAdminHandler.callbackQuery("prm:tseed", async (ctx) => {
+  const count = await prisma.tariff.count();
+  if (count > 0) { await ctx.answerCallbackQuery({ text: "Tariflar allaqachon bor.", show_alert: true }); return; }
+  await prisma.tariff.createMany({
+    data: [
+      { label: "1 hafta", days: 7,   price: 9000,  sortOrder: 0 },
+      { label: "1 oy",    days: 30,  price: 25000, sortOrder: 1 },
+      { label: "3 oy",    days: 90,  price: 60000, sortOrder: 2 },
+      { label: "1 yil",   days: 365, price: 180000, sortOrder: 3 },
+    ],
+  });
+  await ctx.answerCallbackQuery({ text: "✨ 4 ta namuna tarif qo'shildi. Narxlarni tahrirlang.", show_alert: true });
+  await renderTariffs(ctx);
 });
 
 premiumAdminHandler.callbackQuery("prm:tadd", async (ctx) => {
@@ -180,35 +201,31 @@ premiumAdminHandler.callbackQuery("prm:tadd", async (ctx) => {
 premiumAdminHandler.callbackQuery(/^prm:tdel:(\d+)$/, async (ctx) => {
   await prisma.tariff.delete({ where: { id: Number(ctx.match[1]) } }).catch(() => null);
   await ctx.answerCallbackQuery({ text: "O'chirildi." });
-  // Ro'yxatni yangilash
-  const tariffs = await prisma.tariff.findMany({ orderBy: { sortOrder: "asc" } });
-  const lines = tariffs.length
-    ? tariffs.map((t) => `${t.isActive ? "🟢" : "🔴"} <b>${e.escapeHtml(t.label)}</b> — ${t.price.toLocaleString("ru-RU")} so'm · ${t.days} kun`).join("\n")
-    : "Hozircha tarif yo'q.";
-  const rows = tariffs.map((t) => [ibtn(`🗑 ${t.label}`, `prm:tdel:${t.id}`, "danger")]);
-  rows.push([ibtn("➕ Tarif qo'shish", "prm:tadd", "success")]);
-  rows.push([ibtn("Orqaga", "prm:menu", undefined, BE.backMenu)]);
-  await ctx.editMessageText(`🏷 <b>Tariflar</b>\n\n${lines}`, { reply_markup: kb(...rows) }).catch(() => {});
+  await renderTariffs(ctx);
 });
 
 // ─── Sozlamalar ──────────────────────────────────────────────────────────────
 async function settingsData() {
-  const [enabled, freeReq, freeDays, payInfo] = await Promise.all([
+  const [enabled, freeReq, freeDays, freeAi, payInfo] = await Promise.all([
     getBool(KEYS.premiumEnabled, false),
     getSetting(KEYS.freeRequestLimit, "0"),
     getSetting(KEYS.freeDays, "0"),
+    getSetting(KEYS.freeAiLimit, "0"),
     getSetting(KEYS.paymentInfo, ""),
   ]);
   const text =
     `⚙️ <b>Premium sozlamalari</b>\n\n` +
     `Tizim: <b>${enabled ? "🟢 Yoqilgan" : "🔴 O'chirilgan"}</b>\n` +
-    `Bepul so'rovlar: <b>${freeReq}</b> (0 = cheksiz)\n` +
+    `Bepul kino so'rovlari: <b>${freeReq}</b> (0 = cheksiz)\n` +
     `Bepul kunlar: <b>${freeDays}</b> (0 = cheksiz)\n` +
+    `Bepul AI so'rovlari/kun: <b>${freeAi}</b> (0 = cheksiz)\n` +
     `To'lov ma'lumoti: ${payInfo ? "✅ sozlangan" : "❌ yo'q"}\n\n` +
-    `<i>Bepul chegara: qaysi biri (so'rov yoki kun) birinchi tugasa premium so'raladi.</i>`;
+    `<i>Bepul chegara: qaysi biri (kino soni yoki kun) birinchi tugasa premium so'raladi. ` +
+    `AI so'rovlari alohida kunlik hisoblanadi.</i>`;
   const markup = kb(
     [ibtn(enabled ? "🔴 Tizimni o'chirish" : "🟢 Tizimni yoqish", "prm:toggle", enabled ? "danger" : "success")],
-    [ibtn("✏️ Bepul so'rovlar soni", "prm:setfreq", "primary"), ibtn("✏️ Bepul kunlar", "prm:setfdays", "primary")],
+    [ibtn("✏️ Bepul kino soni", "prm:setfreq", "primary"), ibtn("✏️ Bepul kunlar", "prm:setfdays", "primary")],
+    [ibtn("🤖 Bepul AI so'rovlari/kun", "prm:setai", "primary")],
     [ibtn("💳 To'lov ma'lumotini o'zgartirish", "prm:setpay", "primary")],
     [ibtn("Orqaga", "prm:menu", undefined, BE.backMenu)],
   );
@@ -238,6 +255,11 @@ premiumAdminHandler.callbackQuery("prm:setfdays", async (ctx) => {
   await ctx.answerCallbackQuery();
   ctx.session.scratch = { ...(ctx.session.scratch ?? {}), prmField: "fdays" };
   await ctx.reply("Bepul kunlar sonini yuboring (0 = cheksiz):");
+});
+premiumAdminHandler.callbackQuery("prm:setai", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), prmField: "ailimit" };
+  await ctx.reply("Bepul AI so'rovlari/kun sonini yuboring (0 = cheksiz):");
 });
 premiumAdminHandler.callbackQuery("prm:setpay", async (ctx) => {
   await ctx.answerCallbackQuery();
@@ -322,6 +344,14 @@ premiumAdminHandler.on("message:text", async (ctx, next) => {
     if (Number.isNaN(n) || n < 0) { await ctx.reply("❌ Faqat musbat raqam."); return; }
     await setSetting(KEYS.freeDays, String(n));
     await ctx.reply(`✅ Bepul kunlar: <b>${n}</b>`);
+    return;
+  }
+  if (s.prmField === "ailimit") {
+    delete s.prmField;
+    const n = parseInt(text, 10);
+    if (Number.isNaN(n) || n < 0) { await ctx.reply("❌ Faqat musbat raqam."); return; }
+    await setSetting(KEYS.freeAiLimit, String(n));
+    await ctx.reply(`✅ Bepul AI so'rovlari/kun: <b>${n}</b>`);
     return;
   }
   if (s.prmField === "pay") {

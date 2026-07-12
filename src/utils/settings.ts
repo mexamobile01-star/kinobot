@@ -50,8 +50,9 @@ export const KEYS = {
   aiUserModel:       "ai_user_model",   // "provider:model" — foydalanuvchi AI scope'i
   aiAdminModel:      "ai_admin_model",  // "provider:model" — admin AI scope'i
   premiumEnabled:    "premium_enabled",     // premium/limit tizimi yoq/o'chir
-  freeRequestLimit:  "free_request_limit",  // bepul so'rovlar soni (0 = cheksiz)
+  freeRequestLimit:  "free_request_limit",  // bepul kino so'rovlari soni (0 = cheksiz)
   freeDays:          "free_days",           // bepul kunlar (0 = cheksiz)
+  freeAiLimit:       "free_ai_limit",       // bepul kunlik AI so'rovlari (0 = cheksiz)
   paymentInfo:       "payment_info",        // to'lov ko'rsatma (karta raqami va h.k.)
 } as const;
 

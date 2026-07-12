@@ -24,8 +24,10 @@ model User {
   permissions       String?  // ruxsat etilgan bo'limlar (vergul bilan); null = hammasi
   channelLimit      Int?     // majburiy obunaga qo'sha oladigan max kanal; null = cheksiz
   premiumUntil      DateTime? // premium tugash vaqti (null/o'tgan = premium emas)
-  requestCount      Int      @default(0)  // bepul so'rovlar hisobi
+  requestCount      Int      @default(0)  // bepul kino so'rovlari hisobi
   firstRequestAt    DateTime? // birinchi so'rov vaqti (vaqt cheklovi uchun)
+  aiRequestCount    Int      @default(0)  // bugungi AI so'rovlari hisobi
+  aiRequestDay      String?  // "YYYY-MM-DD" — kun o'zgarsa aiRequestCount reset
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

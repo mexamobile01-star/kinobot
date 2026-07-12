@@ -18,6 +18,7 @@ export async function sendPremiumPrompt(ctx: MyContext, reason?: string): Promis
     (reason ? `${reason}\n\n` : "") +
     `Premium bilan:\n` +
     `✅ Cheksiz kino/serial\n` +
+    `✅ Cheksiz AI yordamchi (tavsiya, rasm orqali qidiruv)\n` +
     `✅ Majburiy obunasiz (kanallar so'ralmaydi)\n` +
     `✅ Tez va qulay\n\n`;
 
