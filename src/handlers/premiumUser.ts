@@ -16,22 +16,45 @@ export async function sendPremiumPrompt(ctx: MyContext, reason?: string): Promis
   const head =
     `<tg-emoji emoji-id="5258093637450866522">💎</tg-emoji> <b>Premium obuna</b>\n\n` +
     (reason ? `${reason}\n\n` : "") +
-    `Premium bilan:\n` +
-    `✅ Cheksiz kino/serial\n` +
-    `✅ Cheksiz AI yordamchi (tavsiya, rasm orqali qidiruv)\n` +
-    `✅ Majburiy obunasiz (kanallar so'ralmaydi)\n` +
-    `✅ Tez va qulay\n\n`;
+    `Premium a'zolik bilan botdan <b>to'liq erkin</b> foydalanasiz:\n\n` +
+    `✅ <b>Cheksiz</b> kino va serial — limitsiz\n` +
+    `✅ <b>Majburiy obunasiz</b> — hech qanday kanal so'ralmaydi\n` +
+    `✅ <b>Cheksiz AI yordamchi</b> — tavsiya + rasm orqali kino topish\n` +
+    `✅ Reklama va kutishlarsiz, eng tez xizmat\n\n`;
 
   if (tariffs.length === 0) {
     await ctx.reply(head + `Hozircha tariflar sozlanmagan. Admin bilan bog'laning.`);
     return;
   }
 
-  const rows = tariffs.map((t) => [
-    ibtn(`${t.label} — ${t.price.toLocaleString("ru-RU")} so'm`, `prem:buy:${t.id}`, "success"),
-  ]);
+  // Eng foydali tarifni aniqlash: kunlik narxi eng arzon bo'lgani.
+  const perDay = (t: (typeof tariffs)[number]) => (t.days > 0 ? t.price / t.days : t.price);
+  const bestPerDay = Math.min(...tariffs.map(perDay));
+  // Taqqoslash uchun eng qimmat kunlik narx (odatda eng qisqa tarif)
+  const worstPerDay = Math.max(...tariffs.map(perDay));
 
-  await ctx.reply(head + `Tarifni tanlang:`, { reply_markup: kb(...rows) });
+  const lines: string[] = [head, `<b>Tarifni tanlang:</b>`];
+  const rows = tariffs.map((t) => {
+    const pd = perDay(t);
+    const isBest = pd <= bestPerDay + 0.01;
+    // Eng qisqa/qimmat tarifga nisbatan tejash foizi
+    const saving = worstPerDay > 0 ? Math.round((1 - pd / worstPerDay) * 100) : 0;
+
+    const priceStr = t.price.toLocaleString("ru-RU");
+    const perDayStr = Math.round(pd).toLocaleString("ru-RU");
+
+    let info = `• <b>${e.escapeHtml(t.label)}</b> — ${priceStr} so'm  <i>(${perDayStr} so'm/kun)</i>`;
+    if (isBest) info += `  ⭐️ <b>eng foydali</b>`;
+    else if (saving >= 5) info += `  💰 ${saving}% tejash`;
+    lines.push(info);
+
+    const btnLabel = isBest
+      ? `⭐️ ${t.label} — ${priceStr} so'm (eng foydali)`
+      : `${t.label} — ${priceStr} so'm`;
+    return [ibtn(btnLabel, `prem:buy:${t.id}`, isBest ? "success" : "primary")];
+  });
+
+  await ctx.reply(lines.join("\n"), { reply_markup: kb(...rows) });
 }
 
 // /premium — holat + sotib olish
@@ -45,6 +68,12 @@ premiumHandler.command("premium", async (ctx) => {
     );
     return;
   }
+  await sendPremiumPrompt(ctx);
+});
+
+// Obuna so'rovi ostidagi "Premium obuna" tugmasi
+premiumHandler.callbackQuery("prem:show", async (ctx) => {
+  await ctx.answerCallbackQuery();
   await sendPremiumPrompt(ctx);
 });
 

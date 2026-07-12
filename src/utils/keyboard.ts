@@ -37,7 +37,7 @@ export const BE = {
   users:    "5258391025281408576",
   trend:    "5258513401784573443",
   botSettings: "5258096772776991776",
-  views:    "5258096772776991776",
+  views:    "5253959125838090076",
 } as const;
 
 export const ADMIN_MENU_BUTTONS = {

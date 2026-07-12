@@ -1,6 +1,6 @@
 import { InlineKeyboard } from "grammy";
 import { prisma } from "../prisma.js";
-import { getSetting, KEYS } from "./settings.js";
+import { getBool, getSetting, KEYS } from "./settings.js";
 import type { MyContext } from "../types.js";
 import type { Channel } from "@prisma/client";
 
@@ -117,8 +117,19 @@ export async function sendSubscriptionPrompt(
     }]);
   }
 
+  // Premium tizimi yoqilgan bo'lsa — obunasiz foydalanish uchun premium taklifi
+  if (await getBool(KEYS.premiumEnabled, false)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (kb as any).inline_keyboard.push([{
+      text: "Premium obuna — obunasiz foydalanish",
+      callback_data: "prem:show",
+      icon_custom_emoji_id: "5211179692496808774",
+    }]);
+  }
+
   await ctx.reply(
-    `<b>Botdan foydalanish uchun obuna bo'ling:</b>`,
+    `<b>Botdan foydalanish uchun obuna bo'ling:</b>\n\n` +
+    `<i>Yoki majburiy obunasiz, cheksiz foydalanish uchun — Premium obuna. 👇</i>`,
     { reply_markup: kb }
   );
 }

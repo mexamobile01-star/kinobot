@@ -177,15 +177,16 @@ premiumAdminHandler.callbackQuery("prm:tariffs", async (ctx) => {
 premiumAdminHandler.callbackQuery("prm:tseed", async (ctx) => {
   const count = await prisma.tariff.count();
   if (count > 0) { await ctx.answerCallbackQuery({ text: "Tariflar allaqachon bor.", show_alert: true }); return; }
+  // 3 ta tarif — kunlik narx uzoq muddatda arzonlashadi (1 yil eng foydali).
+  // 1 oy: 833 so'm/kun · 3 oy: 667 so'm/kun (~20% arzon) · 1 yil: 493 so'm/kun (~41% arzon)
   await prisma.tariff.createMany({
     data: [
-      { label: "1 hafta", days: 7,   price: 9000,  sortOrder: 0 },
-      { label: "1 oy",    days: 30,  price: 25000, sortOrder: 1 },
-      { label: "3 oy",    days: 90,  price: 60000, sortOrder: 2 },
-      { label: "1 yil",   days: 365, price: 180000, sortOrder: 3 },
+      { label: "1 oy",  days: 30,  price: 25000,  sortOrder: 0 },
+      { label: "3 oy",  days: 90,  price: 60000,  sortOrder: 1 },
+      { label: "1 yil", days: 365, price: 180000, sortOrder: 2 },
     ],
   });
-  await ctx.answerCallbackQuery({ text: "✨ 4 ta namuna tarif qo'shildi. Narxlarni tahrirlang.", show_alert: true });
+  await ctx.answerCallbackQuery({ text: "✨ 3 ta namuna tarif qo'shildi. Narxlarni tahrirlang.", show_alert: true });
   await renderTariffs(ctx);
 });
 
