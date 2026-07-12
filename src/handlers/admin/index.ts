@@ -17,6 +17,7 @@ import { aiAdminHandler } from "./aiAdmin.js";
 import { aiSettingsHandler } from "./aiSettings.js";
 import { premiumAdminHandler } from "./premium.js";
 import { sourceChannelsHandler } from "./sourceChannels.js";
+import { botSettingsHandler } from "./botSettings.js";
 
 // Faqat adminlar uchun
 export const adminHandler = new Composer<MyContext>();
@@ -42,3 +43,4 @@ admin.use(aiAdminHandler);
 admin.use(aiSettingsHandler);
 admin.use(premiumAdminHandler);
 admin.use(sourceChannelsHandler);
+admin.use(botSettingsHandler);

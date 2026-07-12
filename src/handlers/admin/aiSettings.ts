@@ -70,7 +70,7 @@ async function renderPanel(ctx: MyContext, edit: boolean) {
       ibtn("🛡 Admin modeli", "aiset:scope:a", "primary"),
     ],
     [ibtn("🔄 Yangilash", "aiset:open", "success")],
-    [ibtn("Orqaga", "aiset:back", undefined, BE.backMenu)],
+    [ibtn("Orqaga", "botset:menu", undefined, BE.backMenu)],
   ];
   if (avail.length === 0) {
     lines.push("", "⚠️ Hech qanday AI provayder kaliti sozlanmagan.");

@@ -49,6 +49,7 @@ export const ADMIN_MENU_BUTTONS = {
   premium: "Premium",
   admins: "Admin boshqaruvi",
   backup: "Backup",
+  botSettings: "Bot sozlamalari",
 } as const;
 
 export const ADMIN_MENU_TEXT = ADMIN_MENU_BUTTONS.admins;
@@ -79,17 +80,18 @@ export function rbtn(text: string, style?: BtnStyle, emojiId?: string) {
 }
 
 // ===================== ADMIN REPLY KEYBOARD =====================
+// premium/backup/funnel/admins asosiy menyudan "Bot sozlamalari" ichiga ko'chirildi.
 const SECTION_META: { key: string; text: string; emoji: string }[] = [
   { key: "stats",     text: ADMIN_MENU_BUTTONS.stats,     emoji: BE.stats },
   { key: "channels",  text: ADMIN_MENU_BUTTONS.channels,  emoji: BE.channel },
   { key: "movies",    text: ADMIN_MENU_BUTTONS.movies,    emoji: BE.movie },
   { key: "serials",   text: ADMIN_MENU_BUTTONS.serials,   emoji: BE.serial },
   { key: "broadcast", text: ADMIN_MENU_BUTTONS.broadcast, emoji: BE.broadcast },
-  { key: "funnel",    text: ADMIN_MENU_BUTTONS.funnel,    emoji: BE.trend },
   { key: "referrals", text: ADMIN_MENU_BUTTONS.referrals, emoji: BE.users },
-  { key: "premium",   text: ADMIN_MENU_BUTTONS.premium,   emoji: "5258093637450866522" },
-  { key: "backup",    text: ADMIN_MENU_BUTTONS.backup,    emoji: BE.backup },
 ];
+
+/** "Bot sozlamalari" ichidagi bo'limlar — reply tugma ko'rinishini aniqlash uchun ham */
+export const BOT_SETTINGS_SECTIONS = ["backup", "premium", "ai"] as const;
 
 export function adminMenuKeyboard(userId?: number | bigint): Keyboard {
   const owner = isOwner(userId);
@@ -104,9 +106,10 @@ export function adminMenuKeyboard(userId?: number | bigint): Keyboard {
   }
   if (col % 2 !== 0) kb.row();
 
-  // "Admin boshqaruvi" — faqat owner
-  if (owner) {
-    kb.text(ADMIN_MENU_TEXT, { icon_custom_emoji_id: BE.admin }).row();
+  // "Bot sozlamalari" — owner yoki ichidagi bo'limlardan biriga huquqi bo'lganlar
+  const canBotSettings = owner || BOT_SETTINGS_SECTIONS.some((k) => adminCan(userId ?? 0, k));
+  if (canBotSettings) {
+    kb.text(ADMIN_MENU_BUTTONS.botSettings, { icon_custom_emoji_id: BE.settings }).row();
   }
 
   // AI yordamchi — huquqi bo'lgan barcha adminlar uchun, ko'k rangda

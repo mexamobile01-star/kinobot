@@ -22,18 +22,25 @@ async function backupMenuWithBack() {
       "backup:autotoggle",
       auto ? "success" : "danger"
     )],
-    [ibtn("Menyuga qaytish",   "backup:close",   undefined, BE.backMenu)],
+    [ibtn("Orqaga",   "botset:menu",   undefined, BE.backMenu)],
   );
 }
 
 // ============ MENYU ============
+const BACKUP_HEAD =
+  `<b>Backup</b>\n\nBarcha ma'lumotlarni eksport qilish yoki tiklash.\n` +
+  `Avto backup yoqilsa — har 3 kunda avtomatik yuboriladi.`;
+
 backupHandler.hears(ADMIN_MENU_BUTTONS.backup, async (ctx) => {
   if (!adminCan(ctx.from?.id ?? 0, "backup")) return;
-  await ctx.reply(
-    `<b>Backup</b>\n\nBarcha ma'lumotlarni eksport qilish yoki tiklash.\n` +
-    `Avto backup yoqilsa — har 3 kunda avtomatik yuboriladi.`,
-    { reply_markup: await backupMenuWithBack() }
-  );
+  await ctx.reply(BACKUP_HEAD, { reply_markup: await backupMenuWithBack() });
+});
+
+// "Bot sozlamalari" ichidan ochish (edit)
+backupHandler.callbackQuery("backup:menu", async (ctx) => {
+  if (!adminCan(ctx.from?.id ?? 0, "backup")) { await ctx.answerCallbackQuery(); return; }
+  await ctx.answerCallbackQuery();
+  await ctx.editMessageText(BACKUP_HEAD, { reply_markup: await backupMenuWithBack() }).catch(() => {});
 });
 
 backupHandler.callbackQuery("backup:autotoggle", async (ctx) => {

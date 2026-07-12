@@ -39,7 +39,7 @@ function funnelMenu() {
     [ibtn("Natijalar",            "fn:results", "primary", BE.stats)],
     [ibtn("So'rovnoma yuborish",  "fn:send",    "primary", BE.broadcast)],
     [ibtn("O'chirish",            "fn:delete",  "danger",  BE.chDelete)],
-    [ibtn("Menyuga qaytish",      "fn:close",   undefined, BE.backMenu)],
+    [ibtn("Orqaga",               "bc:menu",    undefined, BE.backMenu)],
   );
 }
 

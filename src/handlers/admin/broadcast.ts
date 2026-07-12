@@ -67,6 +67,7 @@ function broadcastMenu() {
       ibtn("🗺 Viloyat bo'yicha",        "bc:target:region",    "success"),
       ibtn("📊 Funnel javobchilari",     "bc:target:funnel",    "success"),
     ],
+    [ibtn("📋 So'rovnomalar (Funnel)",   "fn:menu",             "primary", BE.trend)],
     [ibtn("Menyuga qaytish", "bc:close", undefined, BE.backMenu)],
   );
 }

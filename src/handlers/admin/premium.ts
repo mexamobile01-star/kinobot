@@ -32,7 +32,7 @@ async function menuData() {
     [ibtn("🏷 Tariflar", "prm:tariffs", "primary"), ibtn("⚙️ Sozlamalar", "prm:settings", "primary")],
     [ibtn("🎁 Qo'lda premium berish", "prm:grant", "success")],
     [ibtn("👥 Premium foydalanuvchilar", "prm:users:0", "primary")],
-    [ibtn("Menyuga qaytish", "prm:close", undefined, BE.backMenu)],
+    [ibtn("Orqaga", "botset:menu", undefined, BE.backMenu)],
   );
   return { text, markup };
 }
