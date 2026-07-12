@@ -3,7 +3,8 @@ import { prisma } from "../prisma.js";
 import { e } from "../utils/emoji.js";
 import { ibtn, kb, userMenuKeyboard, aiActiveKeyboard } from "../utils/keyboard.js";
 import { checkContentAccess } from "../utils/access.js";
-import { aiEnabled, askAIChat, type ChatMsg } from "../services/ai.js";
+import { aiEnabled, askAIChat, askVision, visionEnabled, type ChatMsg } from "../services/ai.js";
+import { config } from "../config.js";
 import { sendMovie } from "../services/media.js";
 import { sendSerialSeasons } from "./serialView.js";
 import type { MyContext } from "../types.js";
@@ -348,6 +349,74 @@ aiUserHandler.on("message:text", async (ctx, next) => {
   const unique = [...new Set(codes)].slice(0, 5);
   for (const code of unique) {
     await deliverPrefixedCode(ctx, code).catch(() => {});
+  }
+});
+
+// ─── Rasm orqali kino topish (vision) ────────────────────────────────────────
+aiUserHandler.on("message:photo", async (ctx, next) => {
+  if (!ctx.session.scratch?.aiChat) return next();
+
+  if (!visionEnabled()) {
+    await ctx.reply("🖼 Kechirasiz, rasm orqali qidirish uchun vision-AI sozlanmagan (OpenRouter/Mistral kaliti kerak).");
+    return;
+  }
+
+  // Obuna/premium tekshiruvi (so'rov hisoblanadi)
+  if (!(await checkContentAccess(ctx))) return;
+
+  await ctx.replyWithChatAction("typing").catch(() => {});
+
+  // Rasmni yuklab olish → data URL
+  const photo = ctx.message.photo.at(-1)!;
+  let dataUrl: string | null = null;
+  try {
+    const file = await ctx.api.getFile(photo.file_id);
+    const url = `https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`;
+    const buf = Buffer.from(await (await fetch(url)).arrayBuffer());
+    dataUrl = `data:image/jpeg;base64,${buf.toString("base64")}`;
+  } catch {
+    await ctx.reply("❌ Rasmni yuklab bo'lmadi. Qaytadan urinib ko'ring.");
+    return;
+  }
+
+  const visionPrompt =
+    `Ushbu rasm — kino yoki serial posteri/kadri. Qaysi kino/serial ekanini ANIQLA. ` +
+    `Faqat quyidagi formatda javob ber (boshqa hech narsa yozma):\n` +
+    `TITLE: <original yoki eng mashhur nomi>\nYEAR: <yili yoki ->\nINFO: <bir jumla qisqa ma'lumot>`;
+
+  const answer = await askVision({ userText: visionPrompt, imageDataUrl: dataUrl });
+  if (!answer) {
+    await ctx.reply("🤖 Rasmni taniy olmadim. Boshqa/tiniqroq rasm yuboring yoki nomini yozing.");
+    return;
+  }
+
+  const title = answer.match(/TITLE:\s*(.+)/i)?.[1]?.trim();
+  const year  = answer.match(/YEAR:\s*(.+)/i)?.[1]?.trim();
+  const info  = answer.match(/INFO:\s*(.+)/i)?.[1]?.trim();
+
+  if (!title) {
+    await ctx.reply(e.escapeHtml(answer));
+    return;
+  }
+
+  // Bazadan qidirish (nom bo'yicha)
+  const found = await prisma.movie.findFirst({
+    where: { title: { contains: title, mode: "insensitive" } },
+    orderBy: { views: "desc" },
+  });
+
+  await ctx.reply(
+    `<tg-emoji emoji-id="5429571366384842791">🔎</tg-emoji> Rasmda: <b>${e.escapeHtml(title)}</b>` +
+    (year && year !== "-" ? ` (${e.escapeHtml(year)})` : "") +
+    (info ? `\n<i>${e.escapeHtml(info)}</i>` : "")
+  );
+
+  if (found) {
+    await sendMovie(ctx, found);
+  } else {
+    await ctx.reply(
+      `ℹ️ Bu kino hozircha <b>bazamizda yo'q</b>. Nomi bo'yicha qidirib ko'ring yoki keyinroq qo'shilishi mumkin.`
+    );
   }
 });
 
