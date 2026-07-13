@@ -143,8 +143,8 @@ export function botSettingsKeyboard(userId?: number | bigint): Keyboard {
   };
 
   if (owner) add(BOT_SETTINGS_TEXT.admins, BE.admin);
-  if (adminCan(userId ?? 0, "premium")) add(BOT_SETTINGS_TEXT.premium, "5258093637450866522");
-  if (adminCan(userId ?? 0, "ai")) add(BOT_SETTINGS_TEXT.ai, BE.settings);
+  if (adminCan(userId ?? 0, "premium")) add(BOT_SETTINGS_TEXT.premium, "5211179692496808774");
+  if (adminCan(userId ?? 0, "ai")) add(BOT_SETTINGS_TEXT.ai, "5258093637450866522");
   if (adminCan(userId ?? 0, "backup")) add(BOT_SETTINGS_TEXT.backup, BE.backup);
   if (col % 2 !== 0) kb.row();
 

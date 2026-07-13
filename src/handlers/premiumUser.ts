@@ -2,15 +2,16 @@ import { Composer } from "grammy";
 import { prisma } from "../prisma.js";
 import { config } from "../config.js";
 import { e } from "../utils/emoji.js";
-import { ibtn, kb } from "../utils/keyboard.js";
+import { ibtn, kb, BE } from "../utils/keyboard.js";
 import { getSetting, KEYS } from "../utils/settings.js";
 import { activeTariffs, isPremiumActive, premiumEnabled, seedDefaultTariffs } from "../utils/premium.js";
+import { getUnsubscribedChannels, editSubscriptionPrompt } from "../utils/subscription.js";
 import type { MyContext } from "../types.js";
 
 export const premiumHandler = new Composer<MyContext>();
 
-/** Premium taklifi xabari (limit tugaganda yoki /premium orqali) */
-export async function sendPremiumPrompt(ctx: MyContext, reason?: string): Promise<void> {
+/** Premium taklifi xabari (limit tugaganda, /premium yoki obuna so'rovi ostidagi tugma orqali) */
+export async function sendPremiumPrompt(ctx: MyContext, reason?: string, edit = false): Promise<void> {
   let tariffs = await activeTariffs();
   // Premium yoqilgan-u tarif yo'q bo'lsa — standart tariflarni avtomatik qo'shamiz
   if (tariffs.length === 0 && (await premiumEnabled())) {
@@ -28,7 +29,9 @@ export async function sendPremiumPrompt(ctx: MyContext, reason?: string): Promis
     `✅ Reklama va kutishlarsiz, eng tez xizmat\n\n`;
 
   if (tariffs.length === 0) {
-    await ctx.reply(head + `Hozircha tariflar sozlanmagan. Admin bilan bog'laning.`);
+    const text = head + `Hozircha tariflar sozlanmagan. Admin bilan bog'laning.`;
+    if (edit) await ctx.editMessageText(text).catch(() => ctx.reply(text));
+    else await ctx.reply(text);
     return;
   }
 
@@ -58,8 +61,12 @@ export async function sendPremiumPrompt(ctx: MyContext, reason?: string): Promis
       : `${t.label} — ${priceStr} so'm`;
     return [ibtn(btnLabel, `prem:buy:${t.id}`, isBest ? "success" : "primary")];
   });
+  rows.push([ibtn("⬅️ Orqaga", "prem:back", undefined, BE.backMenu)]);
 
-  await ctx.reply(lines.join("\n"), { reply_markup: kb(...rows) });
+  const text = lines.join("\n");
+  const markup = kb(...rows);
+  if (edit) await ctx.editMessageText(text, { reply_markup: markup }).catch(() => ctx.reply(text, { reply_markup: markup }));
+  else await ctx.reply(text, { reply_markup: markup });
 }
 
 // /premium — holat + sotib olish
@@ -76,10 +83,22 @@ premiumHandler.command("premium", async (ctx) => {
   await sendPremiumPrompt(ctx);
 });
 
-// Obuna so'rovi ostidagi "Premium obuna" tugmasi
+// Obuna so'rovi ostidagi "Premium obuna" tugmasi — shu xabarni o'zini yangilaydi
 premiumHandler.callbackQuery("prem:show", async (ctx) => {
   await ctx.answerCallbackQuery();
-  await sendPremiumPrompt(ctx);
+  await sendPremiumPrompt(ctx, undefined, true);
+});
+
+// Tariflardan "Orqaga" — obuna so'rovi hali kerak bo'lsa unga qaytadi, aks holda yopadi
+premiumHandler.callbackQuery("prem:back", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const notJoined = await getUnsubscribedChannels(ctx, ctx.from.id);
+  const blocking  = notJoined.filter((c) => c.type !== "INSTAGRAM");
+  if (blocking.length > 0) {
+    await editSubscriptionPrompt(ctx, notJoined);
+  } else {
+    await ctx.deleteMessage().catch(() => {});
+  }
 });
 
 // Tarif tanlandi → to'lov ko'rsatmasi + screenshot so'rash

@@ -90,11 +90,7 @@ export async function getUnsubscribedChannels(
   return results.filter((r) => !r.isSubscribed).map((r) => r.channel);
 }
 
-/** Obuna so'rovi xabarini yuboradi */
-export async function sendSubscriptionPrompt(
-  ctx: MyContext,
-  channels: Channel[]
-): Promise<void> {
+async function buildSubscriptionMarkup(channels: Channel[]): Promise<InlineKeyboard> {
   const checkText  = await getSetting(KEYS.subCheckBtnText,    "Tekshirish");
   const defLabel   = await getSetting(KEYS.subChannelBtnLabel, "+ Kanalga obuna bo'lish");
 
@@ -113,7 +109,7 @@ export async function sendSubscriptionPrompt(
     (kb as any).inline_keyboard.push([{
       text: checkText,
       callback_data: "sub:check",
-      icon_custom_emoji_id: "5861665979968262792",
+      icon_custom_emoji_id: "5260416304224936047",
     }]);
   }
 
@@ -127,11 +123,31 @@ export async function sendSubscriptionPrompt(
     }]);
   }
 
-  await ctx.reply(
-    `<b>Botdan foydalanish uchun obuna bo'ling:</b>\n\n` +
-    `<i>Yoki majburiy obunasiz, cheksiz foydalanish uchun — Premium obuna. 👇</i>`,
-    { reply_markup: kb }
-  );
+  return kb;
+}
+
+const SUB_PROMPT_TEXT =
+  `<b>Botdan foydalanish uchun obuna bo'ling:</b>\n\n` +
+  `<i>Yoki majburiy obunasiz, cheksiz foydalanish uchun — Premium obuna. 👇</i>`;
+
+/** Obuna so'rovi xabarini yuboradi */
+export async function sendSubscriptionPrompt(
+  ctx: MyContext,
+  channels: Channel[]
+): Promise<void> {
+  const kb = await buildSubscriptionMarkup(channels);
+  await ctx.reply(SUB_PROMPT_TEXT, { reply_markup: kb });
+}
+
+/** Obuna so'rovi xabarini joriy (masalan, premium taklifidan qaytilgan) xabar ustiga tahrirlaydi */
+export async function editSubscriptionPrompt(
+  ctx: MyContext,
+  channels: Channel[]
+): Promise<void> {
+  const kb = await buildSubscriptionMarkup(channels);
+  await ctx.editMessageText(SUB_PROMPT_TEXT, { reply_markup: kb }).catch(async () => {
+    await ctx.reply(SUB_PROMPT_TEXT, { reply_markup: kb });
+  });
 }
 
 export function channelUrl(ch: Channel): string | null {

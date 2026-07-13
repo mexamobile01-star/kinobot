@@ -1,12 +1,13 @@
 import { Composer } from "grammy";
 import { prisma } from "../prisma.js";
 import { isAdmin } from "../config.js";
-import { adminMenuKeyboard, kb } from "../utils/keyboard.js";
+import { adminMenuKeyboard, userMenuKeyboard, kb } from "../utils/keyboard.js";
 import { getUnsubscribedChannels } from "../utils/subscription.js";
 import { checkContentAccess } from "../utils/access.js";
 import { attachReferrer, confirmReferral } from "../utils/referral.js";
 import { sendReferralInfo } from "./referral.js";
 import { sendMovie } from "../services/media.js";
+import { sendSerialSeasons } from "./serialView.js";
 import type { MyContext } from "../types.js";
 
 export const startHandler = new Composer<MyContext>();
@@ -33,17 +34,23 @@ function welcomeKeyboard() {
   );
 }
 
-async function deliverMovieByCode(ctx: MyContext, code: number): Promise<boolean> {
+/** Kod bo'yicha kino YOKI serialni yuboradi (obuna/premium tekshiruvidan keyin) */
+export async function deliverByCode(ctx: MyContext, code: number): Promise<boolean> {
   const movie = await prisma.movie.findUnique({ where: { code } });
-  if (!movie) return false;
-  await sendMovie(ctx, movie);
-  return true;
+  if (movie) { await sendMovie(ctx, movie); return true; }
+  const serial = await prisma.serial.findUnique({ where: { code } });
+  if (serial) { await sendSerialSeasons(ctx, serial.id); return true; }
+  return false;
 }
 
-// Bitta qisqa welcome — buyruq tugmalari (AI, Referal, Mashhur, Random, Kanal)
-// inline ko'rinishda. Alohida "menyu" xabari yuborilmaydi.
+// MUHIM: bitta xabarga inline va doimiy (reply) klaviatura birga qo'yilmaydi —
+// Telegram cheklovi. Asosiy welcome buyruq tugmalari (AI, Referal, Mashhur, Random,
+// Kanal) bilan inline ko'rinishda yuboriladi; darhol ortidan juda qisqa ikkinchi
+// xabar doimiy "AI yordamchi" reply-klaviaturasini o'rnatadi ("Asosiy menyu" kabi
+// alohida matn ko'rsatilmaydi).
 async function sendWelcome(ctx: MyContext) {
   await ctx.reply(WELCOME, { reply_markup: welcomeKeyboard() });
+  await ctx.reply("🍿", { reply_markup: userMenuKeyboard() });
 }
 
 startHandler.command("start", async (ctx) => {
@@ -51,10 +58,10 @@ startHandler.command("start", async (ctx) => {
   const payload = (ctx.match ?? "").toString().trim();
 
   // Deep-link parsing
-  let pendingMovieCode: number | null = null;
+  let pendingCode: number | null = null;
   if (payload.startsWith("movie_")) {
     const c = Number(payload.slice(6));
-    if (Number.isInteger(c)) pendingMovieCode = c;
+    if (Number.isInteger(c)) pendingCode = c;
   } else if (payload.startsWith("ref_")) {
     const refId = Number(payload.slice(4));
     if (Number.isInteger(refId)) await attachReferrer(uid, refId);
@@ -69,14 +76,14 @@ startHandler.command("start", async (ctx) => {
   }
 
   // Deep-link kino — premium/majburiy obuna/limit tekshiruvi
-  if (pendingMovieCode !== null) {
+  if (pendingCode !== null) {
     const ok = await checkContentAccess(ctx);
     if (!ok) {
-      ctx.session.scratch = { ...(ctx.session.scratch ?? {}), pendingMovieCode };
+      ctx.session.scratch = { ...(ctx.session.scratch ?? {}), pendingCode };
       return;
     }
     await confirmReferral(ctx, uid);
-    const delivered = await deliverMovieByCode(ctx, pendingMovieCode);
+    const delivered = await deliverByCode(ctx, pendingCode);
     if (delivered) return;
   }
 
@@ -95,11 +102,11 @@ startHandler.callbackQuery("sub:check", async (ctx) => {
     await ctx.deleteMessage().catch(() => {});
     await confirmReferral(ctx, uid);
 
-    // Obuna oldidan so'ralgan kino bo'lsa — yetkazamiz
-    const pending = ctx.session.scratch?.pendingMovieCode as number | undefined;
+    // Obuna oldidan so'ralgan kino/serial bo'lsa — yetkazamiz
+    const pending = ctx.session.scratch?.pendingCode as number | undefined;
     if (typeof pending === "number") {
-      if (ctx.session.scratch) delete ctx.session.scratch.pendingMovieCode;
-      const ok = await deliverMovieByCode(ctx, pending);
+      if (ctx.session.scratch) delete ctx.session.scratch.pendingCode;
+      const ok = await deliverByCode(ctx, pending);
       if (ok) return;
     }
 

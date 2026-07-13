@@ -6,6 +6,7 @@ import { sendMovie } from "../services/media.js";
 import { checkContentAccess } from "../utils/access.js";
 import { confirmReferral } from "../utils/referral.js";
 import { sendSerialSeasons } from "./serialView.js";
+import { deliverByCode } from "./start.js";
 import { ADMIN_MENU_BUTTONS } from "../utils/keyboard.js";
 import type { MyContext } from "../types.js";
 
@@ -83,16 +84,16 @@ searchHandler.on("message:text", async (ctx, next) => {
   if (text.startsWith("/")) return next();
   if (PANEL_TEXTS.has(text)) return next();
 
-  if (!(await checkAccess(ctx))) return;
-
-  // Kod bo'yicha
+  // Kod bo'yicha — obuna/limit so'ralib qolsa ham kodni eslab qolamiz, shunda
+  // "Tekshirish" bosilgach yoki premium olingach kino/serial avtomatik yetkaziladi.
   if (/^\d+$/.test(text)) {
     const code = Number(text);
-    const movie = await prisma.movie.findUnique({ where: { code } });
-    if (movie) { await sendMovie(ctx, movie); return; }
+    ctx.session.scratch = { ...(ctx.session.scratch ?? {}), pendingCode: code };
+    if (!(await checkAccess(ctx))) return;
+    if (ctx.session.scratch) delete ctx.session.scratch.pendingCode;
 
-    const serial = await prisma.serial.findUnique({ where: { code } });
-    if (serial) { await sendSerialSeasons(ctx, serial.id); return; }
+    const delivered = await deliverByCode(ctx, code);
+    if (delivered) return;
 
     await ctx.reply(
       `<tg-emoji emoji-id="5429571366384842791">🔎</tg-emoji> <b>${code}</b> kodli kino topilmadi.\n\n` +
@@ -101,6 +102,7 @@ searchHandler.on("message:text", async (ctx, next) => {
     return;
   }
 
+  if (!(await checkAccess(ctx))) return;
   await searchByName(ctx, text);
 });
 
