@@ -185,6 +185,9 @@ async function enterAiChat(ctx: MyContext): Promise<void> {
 
 aiUserHandler.hears(AI_BTN, enterAiChat);
 
+// /ai komandasi — reply tugmasi bosilgani kabi AI suhbatiga kiradi
+aiUserHandler.command("ai", enterAiChat);
+
 // Start xabaridagi "AI yordamchi" inline tugmasi
 aiUserHandler.callbackQuery("ai:enter", async (ctx) => {
   await ctx.answerCallbackQuery();
