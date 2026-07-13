@@ -210,7 +210,7 @@ async function showDraftPreview(ctx: MyContext, draft: string) {
   );
 }
 
-aiAdminHandler.hears(AI_BTN, async (ctx) => {
+async function enterAdminAiChat(ctx: MyContext): Promise<void> {
   if (!adminCan(ctx.from!.id, "ai")) return;
   if (!aiEnabled()) {
     await ctx.reply("🤖 AI yordamchi hozircha sozlanmagan.");
@@ -228,7 +228,12 @@ aiAdminHandler.hears(AI_BTN, async (ctx) => {
     `Chiqish uchun <b>${AI_EXIT}</b> tugmasini bosing.`,
     { reply_markup: aiActiveKeyboard() }
   );
-});
+}
+
+aiAdminHandler.hears(AI_BTN, enterAdminAiChat);
+
+// /ai komandasi — admin panelda alohida reply tugma yo'q, shu orqali kiriladi
+aiAdminHandler.command("ai", enterAdminAiChat);
 
 aiAdminHandler.hears(AI_EXIT, async (ctx) => {
   const wasActive = !!ctx.session.scratch?.aiAdminChat;
