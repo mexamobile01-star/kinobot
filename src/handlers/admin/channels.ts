@@ -5,7 +5,7 @@ import { prisma } from "../../prisma.js";
 import { ce, e } from "../../utils/emoji.js";
 import { ADMIN_MENU_BUTTONS, adminMenuKeyboard, ibtn, BE, kb } from "../../utils/keyboard.js";
 import { getBool, setBool, getSetting, setSetting, KEYS } from "../../utils/settings.js";
-import { resolveButtonStyle } from "../../utils/contentButton.js";
+import { resolveButtonStyle, isValidUrl } from "../../utils/contentButton.js";
 import type { MyContext } from "../../types.js";
 import type { ChannelType } from "@prisma/client";
 
@@ -99,7 +99,7 @@ channelsHandler.callbackQuery("ch:toggle", async (ctx) => {
 });
 
 const TYPE_LABEL: Record<ChannelType, string> = {
-  PUBLIC: "Ommaviy", PRIVATE: "Maxfiy", REQUEST: "So'rovli", INSTAGRAM: "Instagram",
+  PUBLIC: "Ommaviy", PRIVATE: "Maxfiy", REQUEST: "So'rovli", INSTAGRAM: "Instagram/boshqa",
 };
 
 // ============ RO'YXAT ============
@@ -332,7 +332,8 @@ channelsHandler.callbackQuery("ch:add", async (ctx) => {
     `<b>Ommaviy</b> — @username bor. Forward yoki @username bilan ham qo'shish mumkin.\n` +
     `<b>Maxfiy</b> — havola orqali qo'shiladi.\n` +
     `<b>So'rovli</b> — so'rov yuboriladi, taklif havolasi kerak.\n` +
-    `<b>Instagram</b> — Instagram profil havolasini yuboring.`,
+    `<b>Instagram/boshqa</b> — Instagram profil, Telegram bot yoki istalgan boshqa havola. ` +
+    `A'zolik TEKSHIRILMAYDI — ro'yxatda ko'rinadi, lekin "Tekshirish"ni bloklamaydi.`,
     {
       reply_markup: kb(
         [
@@ -341,7 +342,7 @@ channelsHandler.callbackQuery("ch:add", async (ctx) => {
         ],
         [
           ibtn("So'rovli",  "ch:type:REQUEST",   "danger",  "5258419835922030550"),
-          ibtn("Instagram", "ch:type:INSTAGRAM", "primary", "5258205968025525531"),
+          ibtn("Instagram/boshqa", "ch:type:INSTAGRAM", "primary", "5258205968025525531"),
         ],
         [ibtn("Orqaga", "ch:menu", undefined, BE.backMenu)],
       ),
@@ -354,12 +355,12 @@ channelsHandler.callbackQuery(/^ch:type:(PUBLIC|PRIVATE|REQUEST|INSTAGRAM)$/, as
   await ctx.answerCallbackQuery();
   ctx.session.scratch = { addChannelType: type };
 
-  // Instagram alohida oqim — requestChat kerak emas
+  // Instagram/boshqa alohida oqim — requestChat kerak emas, a'zolik tekshirilmaydi
   if (type === "INSTAGRAM") {
     await ctx.reply(
-      `📸 <b>Instagram profil qo'shish</b>\n\n` +
-      `Instagram profil havolasini yuboring.\n` +
-      `Masalan: <code>https://instagram.com/username</code>`,
+      `📸 <b>Instagram/boshqa havola qo'shish</b>\n\n` +
+      `Havolani yuboring — Instagram profil, Telegram bot yoki istalgan boshqa link bo'lishi mumkin.\n` +
+      `Masalan: <code>https://instagram.com/username</code> yoki <code>https://t.me/botname</code>`,
       {
         reply_markup: new Keyboard().text("❌ Bekor qilish").resized().oneTime(),
       }
@@ -524,23 +525,30 @@ channelsHandler.on("message", async (ctx, next) => {
 
   const type = ctx.session.scratch!.addChannelType as ChannelType;
 
-  // Instagram URL
+  // Instagram/boshqa havola (Telegram bot va h.k.) — a'zolik tekshirilmaydi
   if (type === "INSTAGRAM") {
     if (!msgText) { await ctx.reply("❌ Havola yuboring."); return; }
-    if (!msgText.includes("instagram.com/") && !msgText.includes("instagr.am/")) {
-      await ctx.reply("❌ Bu Instagram havolasi emas.\n\nMasalan: <code>https://instagram.com/username</code>");
+    if (!isValidUrl(msgText)) {
+      await ctx.reply(
+        "❌ To'g'ri havola emas.\n\nMasalan: <code>https://instagram.com/username</code> yoki <code>https://t.me/botname</code>"
+      );
       return;
     }
-    const urlMatch = msgText.match(/https?:\/\/(www\.)?(instagram\.com|instagr\.am)\/[^\s]+/);
-    const url = urlMatch?.[0] ?? msgText;
-    const username = url.replace(/https?:\/\/(www\.)?instagram\.com\//, "").replace(/\/$/, "").split("/")[0];
+    const isInstagram = /instagram\.com|instagr\.am/i.test(msgText);
+    let title: string;
+    if (isInstagram) {
+      const username = msgText.replace(/https?:\/\/(www\.)?instagram\.com\//i, "").replace(/\/$/, "").split("/")[0];
+      title = username ? `Instagram: @${username}` : "Instagram";
+    } else {
+      title = (() => { try { return new URL(msgText).hostname.replace(/^www\./, ""); } catch { return "Havola"; } })();
+    }
     ctx.session.scratch = {};
     await finishAddChannel(ctx, {
       chatId: -(Date.now() % 1000000000), // unikal salbiy ID
-      title: username ? `Instagram: @${username}` : "Instagram",
+      title,
       username: null,
       type: "INSTAGRAM",
-      inviteLink: url,
+      inviteLink: msgText,
     });
     return;
   }
