@@ -67,16 +67,19 @@ async function renderPopular(ctx: MyContext, page: number, edit: boolean) {
     kb.text(`${m.title} (${m.views})`, `movie:${m.id}`).row();
   }
   const pages = Math.ceil(total / PAGE);
-  if (page > 0) kb.text("⬅️", `popular:page:${page - 1}`);
-  if (pages > 1) kb.text(`${page + 1}/${pages}`, "noop:pop");
-  if (page < pages - 1) kb.text("➡️", `popular:page:${page + 1}`);
+  if (page > 0) kb.text("◀️ Orqaga", `popular:page:${page - 1}`);
+  kb.text("❌", "popular:close");
+  if (page < pages - 1) kb.text("Oldinga ▶️", `popular:page:${page + 1}`);
 
   const text = `${ce("trendUp")} <b>Ko'p ko'rilgan kinolar</b>`;
   if (edit) await ctx.editMessageText(text, { reply_markup: kb }).catch(() => {});
   else await ctx.reply(text, { reply_markup: kb });
 }
 
-searchHandler.callbackQuery("noop:pop", (ctx) => ctx.answerCallbackQuery());
+searchHandler.callbackQuery("popular:close", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await ctx.deleteMessage().catch(() => {});
+});
 
 // ─── Asosiy matnli qidiruv ───────────────────────────────────────────────────
 searchHandler.on("message:text", async (ctx, next) => {

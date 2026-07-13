@@ -37,6 +37,7 @@ export async function sendSerialSeasons(ctx: MyContext, serialId: number) {
       },
     ]);
   }
+  rows.push([{ text: "❌ Yopish", callback_data: "serial:close" }]);
 
   const caption =
     `${ce("tv")} <b>${e.escapeHtml(serial.title)}</b>\n` +
@@ -63,7 +64,7 @@ serialViewHandler.callbackQuery(/^season:(\d+)$/, async (ctx) => {
     where: { id: seasonId },
     include: {
       episodes: { orderBy: { number: "asc" } },
-      serial: true,
+      serial: { include: { seasons: { orderBy: { number: "asc" } } } },
     },
   });
   if (!season) {
@@ -75,13 +76,22 @@ serialViewHandler.callbackQuery(/^season:(\d+)$/, async (ctx) => {
     return;
   }
 
+  const seasons = season.serial.seasons;
+  const idx = seasons.findIndex((s) => s.id === season.id);
+  const prevSeason = idx > 0 ? seasons[idx - 1] : null;
+  const nextSeason = idx < seasons.length - 1 ? seasons[idx + 1] : null;
+
   const kb = new InlineKeyboard();
   let i = 0;
   for (const ep of season.episodes) {
     kb.text(`${ep.number}-qism`, `ep:${ep.id}`);
     if (++i % 3 === 0) kb.row();
   }
-  kb.row().text("⬅️ Sezonlar", `serialBack:${season.serialId}`);
+  kb.row();
+  if (prevSeason) kb.text("◀️ Orqaga", `season:${prevSeason.id}`);
+  kb.text("❌", "serial:close");
+  if (nextSeason) kb.text("Oldinga ▶️", `season:${nextSeason.id}`);
+  kb.row().text("🔙 Barcha sezonlar", `serialBack:${season.serialId}`);
 
   await ctx.reply(
     `${ce("tv")} <b>${e.escapeHtml(season.serial.title)}</b> — ${season.number}-sezon\n` +
@@ -116,4 +126,9 @@ serialViewHandler.callbackQuery(/^ep:(\d+)$/, async (ctx) => {
 serialViewHandler.callbackQuery(/^serialBack:(\d+)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
   await sendSerialSeasons(ctx, Number(ctx.match[1]));
+});
+
+serialViewHandler.callbackQuery("serial:close", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await ctx.deleteMessage().catch(() => {});
 });
