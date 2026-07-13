@@ -5,6 +5,7 @@ import { e } from "../../utils/emoji.js";
 import { ibtn, kb, aiActiveKeyboard, adminMenuKeyboard } from "../../utils/keyboard.js";
 import { aiEnabled, askAIChat, type ChatMsg } from "../../services/ai.js";
 import { AI_CONTROLLABLE, findControllable, applyControllable, getSetting } from "../../utils/settings.js";
+import { summarizeGender } from "../../utils/gender.js";
 import type { MyContext } from "../../types.js";
 
 export const aiAdminHandler = new Composer<MyContext>();
@@ -21,16 +22,21 @@ function startOfToday(): Date {
 /** Jonli bot statistikasi — admin AI kontekstiga uzatiladi */
 async function buildAdminStats(): Promise<string> {
   const today = startOfToday();
+  const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 6);
   const [
-    totalUsers, blockedUsers, todayUsers,
+    totalUsers, blockedUsers, todayUsers, weekUsers,
     totalMovies, todayMovies, moviesNoGenre,
     totalSerials,
     totalChannels, activeChannels, inactiveChannels,
     totalReferrals,
+    premiumUsers, totalAdmins,
+    allFirstNames, regionGroups,
+    weekJoinUsers,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { isBlocked: true } }),
     prisma.user.count({ where: { createdAt: { gte: today } } }),
+    prisma.user.count({ where: { createdAt: { gte: weekAgo } } }),
     prisma.movie.count(),
     prisma.movie.count({ where: { createdAt: { gte: today } } }),
     prisma.movie.findMany({ where: { genre: null }, select: { code: true, title: true }, take: 15 }),
@@ -39,6 +45,11 @@ async function buildAdminStats(): Promise<string> {
     prisma.channel.count({ where: { isActive: true } }),
     prisma.channel.findMany({ where: { isActive: false }, select: { title: true }, take: 15 }),
     prisma.user.count({ where: { referralConfirmed: true } }),
+    prisma.user.count({ where: { premiumUntil: { gt: new Date() } } }),
+    prisma.user.count({ where: { isAdmin: true } }),
+    prisma.user.findMany({ select: { firstName: true } }),
+    prisma.user.groupBy({ by: ["region"], where: { region: { not: null } }, _count: { id: true }, orderBy: { _count: { id: "desc" } } }),
+    prisma.user.findMany({ where: { createdAt: { gte: weekAgo } }, select: { createdAt: true } }),
   ]);
 
   const topRefRaw = await prisma.user.groupBy({
@@ -55,13 +66,31 @@ async function buildAdminStats(): Promise<string> {
     topReferrers.push(`${name} — ${g._count.id} ta`);
   }
 
+  const gender = summarizeGender(allFirstNames.map((u) => u.firstName));
+
+  // Oxirgi 7 kun bo'yicha kunlik qo'shilishlar
+  const dayCounts = new Map<string, number>();
+  for (const u of weekJoinUsers) {
+    const key = u.createdAt.toISOString().slice(0, 10);
+    dayCounts.set(key, (dayCounts.get(key) ?? 0) + 1);
+  }
+  const weekTrend = [...dayCounts.entries()].sort(([a], [b]) => a.localeCompare(b))
+    .map(([day, count]) => `${day}: ${count} ta`).join(", ");
+
   const lines = [
-    `Foydalanuvchilar: ${totalUsers} (bloklangan: ${blockedUsers}, bugun qo'shilgan: ${todayUsers})`,
+    `Foydalanuvchilar: ${totalUsers} (bloklangan: ${blockedUsers}, bugun qo'shilgan: ${todayUsers}, oxirgi 7 kunda: ${weekUsers})`,
+    `Jins bo'yicha (ISMGA QARAB TAXMINIY — Telegram aniq jins bermaydi): ayol ~${gender.female}, erkak ~${gender.male}, aniqlanmadi ${gender.unknown}`,
+    `Premium foydalanuvchilar: ${premiumUsers}`,
+    `Adminlar: ${totalAdmins}`,
     `Kinolar: ${totalMovies} (bugun qo'shilgan: ${todayMovies}, janrsiz: ${moviesNoGenre.length} ta)`,
     `Seriallar: ${totalSerials}`,
     `Kanallar: ${totalChannels} (faol: ${activeChannels}, nofaol: ${totalChannels - activeChannels})`,
     `Tasdiqlangan referallar: ${totalReferrals}`,
   ];
+  if (regionGroups.length) {
+    lines.push(`Hududlar bo'yicha:\n  - ${regionGroups.map((g) => `${g.region} — ${g._count.id} ta`).join("\n  - ")}`);
+  }
+  if (weekTrend) lines.push(`Oxirgi 7 kunlik qo'shilish tendensiyasi: ${weekTrend}`);
   if (topReferrers.length) lines.push(`Top referrerlar:\n  - ${topReferrers.join("\n  - ")}`);
   if (moviesNoGenre.length) lines.push(`Janrsiz kinolar: ${moviesNoGenre.map((m) => `${m.title} (m${m.code})`).join(", ")}`);
   if (inactiveChannels.length) lines.push(`Nofaol kanallar: ${inactiveChannels.map((c) => c.title).join(", ")}`);
@@ -92,7 +121,10 @@ function adminSystemPrompt(stats: string, userInfo: string): string {
     `HTML teglar (<b>,<i>,<code>) va mos emojilar bilan chiroyli, tushunarli javob ber. Markdown ISHLATMA.\n\n` +
 
     `━━━ JONLI BOT STATISTIKASI ━━━\n${stats}\n` +
-    `Admin statistika, kino/kanal boshqaruvi haqida so'rasa — shu ma'lumotlardan aniq foydalan, taxmin qilma.\n\n` +
+    `Admin statistika, foydalanuvchilar (jins, hudud, premium, qo'shilish tendensiyasi), ` +
+    `kino/kanal boshqaruvi haqida so'rasa — shu ma'lumotlardan ANIQ foydalan, o'zingdan taxmin qilma. ` +
+    `Jins ma'lumoti FAQAT ismga qarab dasturiy taxmin ekanini eslatib o't (Telegram bot API foydalanuvchi ` +
+    `jinsini umuman bermaydi) — sonlarni "taxminan" so'zi bilan ber, 100% aniq deb ko'rsatma.\n\n` +
 
     `━━━ XABAR YUBORISH (BROADCAST) ━━━\n` +
     `Agar admin BARCHA foydalanuvchilarga xabar yubormoqchi bo'lsa (masalan: "foydalanuvchilarga yangi ` +
