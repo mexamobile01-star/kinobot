@@ -1,7 +1,7 @@
 import { Composer } from "grammy";
 import { isOwner, adminCan } from "../../config.js";
 import { prisma } from "../../prisma.js";
-import { e } from "../../utils/emoji.js";
+import { ce, e } from "../../utils/emoji.js";
 import { ADMIN_MENU_BUTTONS, ibtn, BE, kb, adminMenuKeyboard } from "../../utils/keyboard.js";
 import { getBool, setBool, KEYS } from "../../utils/settings.js";
 import { UZ_REGIONS } from "../../utils/regions.js";
@@ -296,6 +296,7 @@ funnelHandler.callbackQuery(/^fn:sendsurvey:(\d+)$/, async (ctx) => {
     `<b>So'rovnoma yuborish</b>\n\nKimga yuborasiz?`,
     {
       reply_markup: kb(
+        [ibtn("🧪 Sinov (faqat menga)", `fn:dosend:me`, "success")],
         [ibtn(`Hammaga (${count})`, `fn:dosend:all`, "primary", BE.stats)],
         [ibtn("Sana oralig'i bo'yicha", `fn:dosend:daterange`, "primary")],
         [ibtn("Orqaga", "fn:send", undefined, BE.backMenu)],
@@ -304,7 +305,7 @@ funnelHandler.callbackQuery(/^fn:sendsurvey:(\d+)$/, async (ctx) => {
   ).catch(() => {});
 });
 
-funnelHandler.callbackQuery(/^fn:dosend:(all|daterange)$/, async (ctx) => {
+funnelHandler.callbackQuery(/^fn:dosend:(all|daterange|me)$/, async (ctx) => {
   const mode = ctx.match[1];
   const f = getF(ctx);
   if (!f?.surveyId) { await ctx.answerCallbackQuery(); return; }
@@ -317,6 +318,23 @@ funnelHandler.callbackQuery(/^fn:dosend:(all|daterange)$/, async (ctx) => {
       "Boshlanish sanasini kiriting (DD.MM.YYYY):",
       { reply_markup: kb([ibtn("❌ Bekor", "fn:menu", "danger")]) }
     ).catch(() => {});
+    return;
+  }
+
+  if (mode === "me") {
+    await ctx.answerCallbackQuery({ text: "Sinov yuborilmoqda..." });
+    const survey = await prisma.survey.findUnique({
+      where: { id: f.surveyId },
+      include: { options: { orderBy: { sortOrder: "asc" } } },
+    });
+    if (!survey) { await ctx.reply("❌ So'rovnoma topilmadi."); return; }
+    clearF(ctx);
+    try {
+      await pushSurveyToUser(ctx, ctx.from.id, survey);
+      await ctx.reply(`${ce("check")} Sinov sifatida sizga yuborildi (hisoblanmaydi).`);
+    } catch {
+      await ctx.reply("❌ Yuborib bo'lmadi.");
+    }
     return;
   }
 
