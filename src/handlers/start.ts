@@ -1,7 +1,7 @@
 import { Composer } from "grammy";
 import { prisma } from "../prisma.js";
 import { isAdmin } from "../config.js";
-import { adminMenuKeyboard, userMenuKeyboard, kb } from "../utils/keyboard.js";
+import { adminMenuKeyboard, kb } from "../utils/keyboard.js";
 import { getUnsubscribedChannels } from "../utils/subscription.js";
 import { checkContentAccess } from "../utils/access.js";
 import { attachReferrer, confirmReferral } from "../utils/referral.js";
@@ -43,14 +43,11 @@ export async function deliverByCode(ctx: MyContext, code: number): Promise<boole
   return false;
 }
 
-// MUHIM: bitta xabarga inline va doimiy (reply) klaviatura birga qo'yilmaydi —
-// Telegram cheklovi. Asosiy welcome buyruq tugmalari (AI, Referal, Mashhur, Random,
-// Kanal) bilan inline ko'rinishda yuboriladi; darhol ortidan juda qisqa ikkinchi
-// xabar doimiy "AI yordamchi" reply-klaviaturasini o'rnatadi ("Asosiy menyu" kabi
-// alohida matn ko'rsatilmaydi).
+// Welcome — buyruq tugmalari (AI, Referal, Mashhur, Random, Kanal) inline
+// ko'rinishda. Doimiy "AI yordamchi" reply-klaviaturasi bu yerda o'rnatilmaydi —
+// u faqat AI suhbatidan "Chiqish" bosilgandan keyin paydo bo'ladi (aiUser.ts).
 async function sendWelcome(ctx: MyContext) {
   await ctx.reply(WELCOME, { reply_markup: welcomeKeyboard() });
-  await ctx.reply("🍿", { reply_markup: userMenuKeyboard() });
 }
 
 startHandler.command("start", async (ctx) => {
