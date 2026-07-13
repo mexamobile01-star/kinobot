@@ -112,7 +112,7 @@ premiumHandler.callbackQuery(/^prem:buy:(\d+)$/, async (ctx) => {
 
   const rows = [
     [ibtn("💳 Karta orqali", `pm:karta:${tariff.id}`, "primary")],
-    [ibtn("💎 TON orqali o'tkazma", `pm:ton:${tariff.id}`, "primary")],
+    // TON orqali vaqtincha yashirilgan (so'ralganda qayta yoqiladi) — pm:ton handler o'zi qoladi.
   ];
   if (tariff.starsPrice) {
     rows.push([ibtn(`⭐ Stars orqali (${tariff.starsPrice} ⭐)`, `pm:stars:${tariff.id}`, "success")]);

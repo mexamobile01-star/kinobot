@@ -175,6 +175,9 @@ async function renderTariffs(ctx: MyContext) {
   ]]);
   rows.push([ibtn("➕ Tarif qo'shish", "prm:tadd", "success")]);
   if (tariffs.length === 0) rows.push([ibtn("✨ Namuna tariflar qo'shish", "prm:tseed", "primary")]);
+  if (tariffs.some((t) => !t.starsPrice)) {
+    rows.push([ibtn("⭐ Stars narxlarini avtomatik belgilash", "prm:tstarsauto", "success")]);
+  }
   rows.push([ibtn("Orqaga", "prm:menu", undefined, BE.backMenu)]);
   await ctx.editMessageText(
     `🏷 <b>Tariflar</b>\n\n${lines}\n\n<i>Format: Nom | kun | narx | (ixtiyoriy) stars</i>`,
@@ -204,6 +207,22 @@ premiumAdminHandler.callbackQuery("prm:tadd", async (ctx) => {
     `➕ <b>Yangi tarif</b>\n\nQuyidagi formatda yuboring:\n<code>Nom | kun | narx | (ixtiyoriy) stars</code>\n\n` +
     `Masalan: <code>1 oy | 30 | 15000</code> yoki <code>1 oy | 30 | 15000 | 500</code>`
   );
+});
+
+// Stars narxi sozlanmagan tariflarga taxminiy narx qo'yadi (≈150 so'm/⭐) — admin keyin tahrirlashi mumkin
+premiumAdminHandler.callbackQuery("prm:tstarsauto", async (ctx) => {
+  const missing = await prisma.tariff.findMany({ where: { starsPrice: null } });
+  for (const t of missing) {
+    await prisma.tariff.update({
+      where: { id: t.id },
+      data: { starsPrice: Math.max(1, Math.round(t.price / 150)) },
+    }).catch(() => null);
+  }
+  await ctx.answerCallbackQuery({
+    text: missing.length ? `✨ ${missing.length} ta tarifga Stars narxi belgilandi.` : "Hammasida allaqachon bor.",
+    show_alert: true,
+  });
+  await renderTariffs(ctx);
 });
 
 premiumAdminHandler.callbackQuery(/^prm:tdel:(\d+)$/, async (ctx) => {
