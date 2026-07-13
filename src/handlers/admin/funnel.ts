@@ -19,9 +19,12 @@ export async function pushSurveyToUser(
   userId: number | bigint,
   survey: Pick<Survey, "id" | "question" | "isRegionSurvey"> & { options: Pick<SurveyOption, "id" | "text">[] }
 ): Promise<void> {
-  const ikb = {
-    inline_keyboard: survey.options.map((o) => [{ text: o.text, callback_data: `svr:ans:${survey.id}:${o.id}` }]),
-  };
+  // Viloyat so'rovnomasi — 1 qatorda 2 tadan (qisqa nomlar); boshqalari 1 qatorda 1 tadan
+  const perRow = survey.isRegionSurvey ? 2 : 1;
+  const buttons = survey.options.map((o) => ({ text: o.text, callback_data: `svr:ans:${survey.id}:${o.id}` }));
+  const inline_keyboard: (typeof buttons)[number][][] = [];
+  for (let i = 0; i < buttons.length; i += perRow) inline_keyboard.push(buttons.slice(i, i + perRow));
+  const ikb = { inline_keyboard };
   // Asosiy xabar — muvaffaqiyatsiz bo'lsa chaqiruvchiga otiladi (bloklangan foydalanuvchini aniqlash uchun)
   await ctx.api.sendMessage(Number(userId), survey.question, { reply_markup: ikb, parse_mode: "HTML" });
 
@@ -113,14 +116,27 @@ funnelHandler.callbackQuery("fn:geotoggle", async (ctx) => {
   await ctx.editMessageReplyMarkup({ reply_markup: await funnelMenu() }).catch(() => {});
 });
 
-// Standart so'rovnoma zanjiri: Viloyat (barcha hududlar) -> javobdan keyin Jins
+// Standart so'rovnoma zanjiri: Viloyat (barcha hududlar) -> javobdan keyin Jins.
+// O'ZI TUZATADIGAN: agar eski (zanjirlanmagan) viloyat so'rovnomasi mavjud bo'lsa,
+// yangisini yaratmaydi — o'shanga Jins so'rovnomasini bog'lab qo'yadi.
 funnelHandler.callbackQuery("fn:defaultcreate", async (ctx) => {
-  const existing = await prisma.survey.findFirst({ where: { isRegionSurvey: true } });
-  if (existing) {
-    await ctx.answerCallbackQuery({ text: "Standart viloyat so'rovnomasi allaqachon mavjud.", show_alert: true });
+  await ctx.answerCallbackQuery();
+
+  const existingRegion = await prisma.survey.findFirst({
+    where: { isRegionSurvey: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (existingRegion?.nextSurveyId) {
+    await ctx.editMessageText(
+      "ℹ️ Standart so'rovnoma zanjiri allaqachon mavjud va bog'langan.",
+      { reply_markup: kb(
+        [ibtn("▶️ Hozir yuborish", `fn:sendsurvey:${existingRegion.id}`, "success", BE.broadcast)],
+        [ibtn("Menyuga", "fn:menu", "primary", BE.backMenu)],
+      )}
+    ).catch(() => {});
     return;
   }
-  await ctx.answerCallbackQuery();
 
   const genderSurvey = await prisma.survey.create({
     data: {
@@ -134,19 +150,21 @@ funnelHandler.callbackQuery("fn:defaultcreate", async (ctx) => {
     },
   });
 
-  const regionSurvey = await prisma.survey.create({
-    data: {
-      title: "Viloyat",
-      question: "🗺 Qaysi hududdansiz?",
-      isRegionSurvey: true,
-      nextSurveyId: genderSurvey.id,
-      options: { create: UZ_REGIONS.map((r, i) => ({ text: r.name, sortOrder: i })) },
-    },
-  });
+  const regionSurvey = existingRegion
+    ? await prisma.survey.update({ where: { id: existingRegion.id }, data: { nextSurveyId: genderSurvey.id } })
+    : await prisma.survey.create({
+        data: {
+          title: "Viloyat",
+          question: "🗺 Qaysi hududdansiz?",
+          isRegionSurvey: true,
+          nextSurveyId: genderSurvey.id,
+          options: { create: UZ_REGIONS.map((r, i) => ({ text: r.name, sortOrder: i })) },
+        },
+      });
 
   await ctx.editMessageText(
     `✅ <b>Standart so'rovnoma zanjiri yaratildi!</b>\n\n` +
-    `1️⃣ Viloyat (${UZ_REGIONS.length} ta hudud)\n` +
+    `1️⃣ Viloyat (${UZ_REGIONS.length} ta hudud, 1 qatorda 2 tadan)\n` +
     `2️⃣ Jins — javob berilgach avtomatik yuboriladi\n\n` +
     `<i>Yuborilganda foydalanuvchi ro'yxatdan viloyatini tanlaydi yoki (yoqilgan bo'lsa) ` +
     `GPS orqali avtomatik aniqlatadi. Natijalarni "Auditoriyaga qarab yuborish" uchun ` +
@@ -329,9 +347,23 @@ funnelHandler.callbackQuery(/^fn:dosend:(all|daterange|me)$/, async (ctx) => {
     });
     if (!survey) { await ctx.reply("❌ So'rovnoma topilmadi."); return; }
     clearF(ctx);
+
+    // Qayta-qayta sinash uchun ushbu zanjirdagi oldingi test javoblarini tozalaymiz
+    // (aks holda "allaqachon javob bergansiz" bloklab, zanjir davom etmaydi)
+    const userId = BigInt(ctx.from.id);
+    let cur: { id: number; nextSurveyId: number | null } | null = survey;
+    const visited = new Set<number>();
+    while (cur && !visited.has(cur.id)) {
+      visited.add(cur.id);
+      await prisma.surveyResponse.deleteMany({ where: { surveyId: cur.id, userId } }).catch(() => null);
+      cur = cur.nextSurveyId
+        ? await prisma.survey.findUnique({ where: { id: cur.nextSurveyId }, select: { id: true, nextSurveyId: true } })
+        : null;
+    }
+
     try {
       await pushSurveyToUser(ctx, ctx.from.id, survey);
-      await ctx.reply(`${ce("check")} Sinov sifatida sizga yuborildi (hisoblanmaydi).`);
+      await ctx.reply(`${ce("check")} Sinov sifatida sizga yuborildi (hisoblanmaydi, oldingi test javoblaringiz tozalandi).`);
     } catch {
       await ctx.reply("❌ Yuborib bo'lmadi.");
     }
