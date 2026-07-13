@@ -9,6 +9,8 @@ import type { MyContext } from "../../types.js";
 
 export const premiumAdminHandler = new Composer<MyContext>();
 
+const CONTACT_MARKUP = kb([{ text: "📞 Muammo bormi? Admin bilan bog'lanish", url: "https://t.me/akajon_00" }]);
+
 function can(ctx: MyContext): boolean {
   return adminCan(ctx.from?.id ?? 0, "premium");
 }
@@ -95,10 +97,12 @@ premiumAdminHandler.callbackQuery(/^prm:pay:(\d+)$/, async (ctx) => {
   const u = await prisma.user.findUnique({ where: { id: p.userId } });
   const uname = u?.username ? `@${u.username}` : "—";
 
+  const methodText = { karta: "💳 Karta", ton: "💎 TON", stars: "⭐ Stars" }[p.method] ?? p.method;
   const text =
     `💳 <b>To'lov #${p.id}</b>\n\n` +
     `Foydalanuvchi: <b>${e.escapeHtml(u?.firstName ?? "—")}</b> ${uname}\n` +
     `ID: <code>${p.userId}</code>\n` +
+    `Usul: <b>${methodText}</b>\n` +
     `Tarif: <b>${e.escapeHtml(p.tariffLabel)}</b> — ${p.amount.toLocaleString("ru-RU")} so'm (${p.days} kun)\n` +
     `Holat: <b>${p.status}</b>\n` +
     `Sana: ${p.createdAt.toLocaleString("ru-RU")}`;
@@ -136,7 +140,7 @@ premiumAdminHandler.callbackQuery(/^prm:approve:(\d+)$/, async (ctx) => {
     `<tg-emoji emoji-id="5258093637450866522">💎</tg-emoji> <b>Premium yoqildi!</b>\n\n` +
     `To'lovingiz tasdiqlandi. Premium <b>${until.toLocaleDateString("ru-RU")}</b> gacha amal qiladi.\n` +
     `Endi cheksiz va obunasiz foydalanishingiz mumkin! 🎉`,
-    { parse_mode: "HTML" }
+    { parse_mode: "HTML", reply_markup: CONTACT_MARKUP }
   ).catch(() => null);
 });
 
@@ -152,6 +156,7 @@ premiumAdminHandler.callbackQuery(/^prm:reject:(\d+)$/, async (ctx) => {
   await ctx.api.sendMessage(
     Number(p.userId),
     `❌ To'lovingiz (#${p.id}) tasdiqlanmadi. Savol bo'lsa admin bilan bog'laning.`,
+    { reply_markup: CONTACT_MARKUP }
   ).catch(() => null);
 });
 
@@ -159,13 +164,22 @@ premiumAdminHandler.callbackQuery(/^prm:reject:(\d+)$/, async (ctx) => {
 async function renderTariffs(ctx: MyContext) {
   const tariffs = await prisma.tariff.findMany({ orderBy: { sortOrder: "asc" } });
   const lines = tariffs.length
-    ? tariffs.map((t) => `${t.isActive ? "🟢" : "🔴"} <b>${e.escapeHtml(t.label)}</b> — ${t.price.toLocaleString("ru-RU")} so'm · ${t.days} kun`).join("\n")
+    ? tariffs.map((t) =>
+        `${t.isActive ? "🟢" : "🔴"} <b>${e.escapeHtml(t.label)}</b> — ${t.price.toLocaleString("ru-RU")} so'm · ${t.days} kun` +
+        (t.starsPrice ? ` · ⭐ ${t.starsPrice}` : ` · ⭐ <i>sozlanmagan</i>`)
+      ).join("\n")
     : "Hozircha tarif yo'q.";
-  const rows = tariffs.map((t) => [ibtn(`🗑 ${t.label}`, `prm:tdel:${t.id}`, "danger")]);
+  const rows = tariffs.flatMap((t) => [[
+    ibtn(`🗑 ${t.label}`, `prm:tdel:${t.id}`, "danger"),
+    ibtn(`⭐ ${t.label} narxi`, `prm:tstars:${t.id}`, "primary"),
+  ]]);
   rows.push([ibtn("➕ Tarif qo'shish", "prm:tadd", "success")]);
   if (tariffs.length === 0) rows.push([ibtn("✨ Namuna tariflar qo'shish", "prm:tseed", "primary")]);
   rows.push([ibtn("Orqaga", "prm:menu", undefined, BE.backMenu)]);
-  await ctx.editMessageText(`🏷 <b>Tariflar</b>\n\n${lines}`, { reply_markup: kb(...rows) }).catch(() => {});
+  await ctx.editMessageText(
+    `🏷 <b>Tariflar</b>\n\n${lines}\n\n<i>Format: Nom | kun | narx | (ixtiyoriy) stars</i>`,
+    { reply_markup: kb(...rows) }
+  ).catch(() => {});
 }
 
 premiumAdminHandler.callbackQuery("prm:tariffs", async (ctx) => {
@@ -187,8 +201,8 @@ premiumAdminHandler.callbackQuery("prm:tadd", async (ctx) => {
   await ctx.answerCallbackQuery();
   ctx.session.scratch = { ...(ctx.session.scratch ?? {}), prmAddTariff: true };
   await ctx.reply(
-    `➕ <b>Yangi tarif</b>\n\nQuyidagi formatda yuboring:\n<code>Nom | kun | narx</code>\n\n` +
-    `Masalan: <code>1 oy | 30 | 15000</code>`
+    `➕ <b>Yangi tarif</b>\n\nQuyidagi formatda yuboring:\n<code>Nom | kun | narx | (ixtiyoriy) stars</code>\n\n` +
+    `Masalan: <code>1 oy | 30 | 15000</code> yoki <code>1 oy | 30 | 15000 | 500</code>`
   );
 });
 
@@ -198,14 +212,27 @@ premiumAdminHandler.callbackQuery(/^prm:tdel:(\d+)$/, async (ctx) => {
   await renderTariffs(ctx);
 });
 
+premiumAdminHandler.callbackQuery(/^prm:tstars:(\d+)$/, async (ctx) => {
+  const tariff = await prisma.tariff.findUnique({ where: { id: Number(ctx.match[1]) } });
+  if (!tariff) { await ctx.answerCallbackQuery({ text: "Topilmadi.", show_alert: true }); return; }
+  await ctx.answerCallbackQuery();
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), prmField: `tstars:${tariff.id}` };
+  await ctx.reply(
+    `⭐ <b>${e.escapeHtml(tariff.label)}</b> uchun Stars narxini yuboring.\n\n` +
+    `Hozirgi: <b>${tariff.starsPrice ?? "sozlanmagan"}</b>\n` +
+    `O'chirish uchun: <code>-</code>`
+  );
+});
+
 // ─── Sozlamalar ──────────────────────────────────────────────────────────────
 async function settingsData() {
-  const [enabled, freeReq, freeDays, freeAi, payInfo] = await Promise.all([
+  const [enabled, freeReq, freeDays, freeAi, payInfo, payInfoTon] = await Promise.all([
     getBool(KEYS.premiumEnabled, false),
     getSetting(KEYS.freeRequestLimit, "0"),
     getSetting(KEYS.freeDays, "0"),
     getSetting(KEYS.freeAiLimit, "0"),
     getSetting(KEYS.paymentInfo, ""),
+    getSetting(KEYS.paymentInfoTon, ""),
   ]);
   const text =
     `⚙️ <b>Premium sozlamalari</b>\n\n` +
@@ -213,14 +240,16 @@ async function settingsData() {
     `Bepul kino so'rovlari: <b>${freeReq}</b> (0 = cheksiz)\n` +
     `Bepul kunlar: <b>${freeDays}</b> (0 = cheksiz)\n` +
     `Bepul AI so'rovlari/kun: <b>${freeAi}</b> (0 = cheksiz)\n` +
-    `To'lov ma'lumoti: ${payInfo ? "✅ sozlangan" : "❌ yo'q"}\n\n` +
+    `Karta ma'lumoti: ${payInfo ? "✅ sozlangan" : "❌ yo'q"}\n` +
+    `TON ma'lumoti: ${payInfoTon ? "✅ sozlangan" : "❌ yo'q"}\n` +
+    `Stars narxi: Tariflar bo'limida, har tarif uchun alohida\n\n` +
     `<i>Bepul chegara: qaysi biri (kino soni yoki kun) birinchi tugasa premium so'raladi. ` +
     `AI so'rovlari alohida kunlik hisoblanadi.</i>`;
   const markup = kb(
     [ibtn(enabled ? "🔴 Tizimni o'chirish" : "🟢 Tizimni yoqish", "prm:toggle", enabled ? "danger" : "success")],
     [ibtn("✏️ Bepul kino soni", "prm:setfreq", "primary"), ibtn("✏️ Bepul kunlar", "prm:setfdays", "primary")],
     [ibtn("🤖 Bepul AI so'rovlari/kun", "prm:setai", "primary")],
-    [ibtn("💳 To'lov ma'lumotini o'zgartirish", "prm:setpay", "primary")],
+    [ibtn("💳 Karta ma'lumoti", "prm:setpay", "primary"), ibtn("💎 TON ma'lumoti", "prm:setpayton", "primary")],
     [ibtn("Orqaga", "prm:menu", undefined, BE.backMenu)],
   );
   return { text, markup };
@@ -260,7 +289,12 @@ premiumAdminHandler.callbackQuery("prm:setai", async (ctx) => {
 premiumAdminHandler.callbackQuery("prm:setpay", async (ctx) => {
   await ctx.answerCallbackQuery();
   ctx.session.scratch = { ...(ctx.session.scratch ?? {}), prmField: "pay" };
-  await ctx.reply("To'lov ma'lumotini yuboring (karta raqami, egasi va ko'rsatma):");
+  await ctx.reply("💳 Karta orqali to'lov ma'lumotini yuboring (karta raqami, egasi va ko'rsatma):");
+});
+premiumAdminHandler.callbackQuery("prm:setpayton", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), prmField: "payton" };
+  await ctx.reply("💎 TON orqali to'lov ma'lumotini yuboring (wallet manzili va ko'rsatma):");
 });
 
 // ─── Qo'lda premium berish ───────────────────────────────────────────────────
@@ -316,13 +350,32 @@ premiumAdminHandler.on("message:text", async (ctx, next) => {
     const label = parts[0];
     const days = parseInt(parts[1], 10);
     const price = parseInt(parts[2], 10);
-    if (!label || Number.isNaN(days) || Number.isNaN(price)) {
+    const starsPrice = parts[3] ? parseInt(parts[3], 10) : null;
+    if (!label || Number.isNaN(days) || Number.isNaN(price) || (parts[3] && Number.isNaN(starsPrice))) {
       await ctx.reply("❌ Format xato. Namuna: <code>1 oy | 30 | 15000</code>");
       return;
     }
     const count = await prisma.tariff.count();
-    await prisma.tariff.create({ data: { label: label.slice(0, 40), days, price, sortOrder: count } });
-    await ctx.reply(`✅ Tarif qo'shildi: <b>${e.escapeHtml(label)}</b> — ${price.toLocaleString("ru-RU")} so'm · ${days} kun`);
+    await prisma.tariff.create({ data: { label: label.slice(0, 40), days, price, starsPrice, sortOrder: count } });
+    await ctx.reply(
+      `✅ Tarif qo'shildi: <b>${e.escapeHtml(label)}</b> — ${price.toLocaleString("ru-RU")} so'm · ${days} kun` +
+      (starsPrice ? ` · ⭐ ${starsPrice}` : "")
+    );
+    return;
+  }
+
+  if (typeof s.prmField === "string" && s.prmField.startsWith("tstars:")) {
+    const tariffId = Number(s.prmField.slice("tstars:".length));
+    delete s.prmField;
+    if (text === "-") {
+      await prisma.tariff.update({ where: { id: tariffId }, data: { starsPrice: null } }).catch(() => null);
+      await ctx.reply("✅ Stars narxi o'chirildi.");
+      return;
+    }
+    const n = parseInt(text, 10);
+    if (Number.isNaN(n) || n <= 0) { await ctx.reply("❌ Faqat musbat raqam yoki <code>-</code>."); return; }
+    await prisma.tariff.update({ where: { id: tariffId }, data: { starsPrice: n } }).catch(() => null);
+    await ctx.reply(`✅ Stars narxi: <b>${n} ⭐</b>`);
     return;
   }
 
@@ -353,7 +406,13 @@ premiumAdminHandler.on("message:text", async (ctx, next) => {
   if (s.prmField === "pay") {
     delete s.prmField;
     await setSetting(KEYS.paymentInfo, text.slice(0, 500));
-    await ctx.reply(`✅ To'lov ma'lumoti saqlandi.`);
+    await ctx.reply(`✅ Karta to'lov ma'lumoti saqlandi.`);
+    return;
+  }
+  if (s.prmField === "payton") {
+    delete s.prmField;
+    await setSetting(KEYS.paymentInfoTon, text.slice(0, 500));
+    await ctx.reply(`✅ TON to'lov ma'lumoti saqlandi.`);
     return;
   }
   if (s.prmField === "grant") {

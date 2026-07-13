@@ -53,7 +53,8 @@ export const KEYS = {
   freeRequestLimit:  "free_request_limit",  // bepul kino so'rovlari soni (0 = cheksiz)
   freeDays:          "free_days",           // bepul kunlar (0 = cheksiz)
   freeAiLimit:       "free_ai_limit",       // bepul kunlik AI so'rovlari (0 = cheksiz)
-  paymentInfo:       "payment_info",        // to'lov ko'rsatma (karta raqami va h.k.)
+  paymentInfo:       "payment_info",        // Karta orqali to'lov ko'rsatmasi (karta raqami va h.k.)
+  paymentInfoTon:    "payment_info_ton",    // TON orqali to'lov ko'rsatmasi (wallet manzili va h.k.)
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────────────

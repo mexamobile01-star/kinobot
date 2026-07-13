@@ -37,12 +37,13 @@ model User {
 
 // ===================== PREMIUM TARIFLAR =====================
 model Tariff {
-  id        Int     @id @default(autoincrement())
-  label     String  // masalan "1 oy"
-  days      Int     // premium davomiyligi (kun)
-  price     Int     // narx (so'm)
-  sortOrder Int     @default(0)
-  isActive  Boolean @default(true)
+  id         Int     @id @default(autoincrement())
+  label      String  // masalan "1 oy"
+  days       Int     // premium davomiyligi (kun)
+  price      Int     // narx (so'm)
+  starsPrice Int?    // Telegram Stars narxi (null = Stars orqali sotib olib bo'lmaydi)
+  sortOrder  Int     @default(0)
+  isActive   Boolean @default(true)
 
   @@map("tariffs")
 }
@@ -55,6 +56,7 @@ model Payment {
   tariffLabel  String    // snapshot (tarif o'zgarsa tarix buzilmasin)
   days         Int       // snapshot
   amount       Int       // snapshot
+  method       String    @default("karta") // karta | ton | stars
   status       String    @default("pending") // pending | approved | rejected
   proofFileId  String?   // chek/screenshot file_id
   createdAt    DateTime  @default(now())

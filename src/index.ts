@@ -168,6 +168,7 @@ async function main() {
   const ALLOWED_UPDATES = [
     "message", "callback_query", "inline_query",
     "chat_join_request", "chat_member", "channel_post",
+    "pre_checkout_query",
   ] as const;
 
   // ===== WEBHOOK rejimi (Cloud Run / server) =====
