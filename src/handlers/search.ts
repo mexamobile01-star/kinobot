@@ -45,10 +45,8 @@ searchHandler.command("random", async (ctx) => {
 });
 
 // ─── Qidiruv knopkasi: ko'p ko'rilgan / inline ───────────────────────────────
-searchHandler.callbackQuery("popular:page:0", async (ctx) => {
-  await ctx.answerCallbackQuery();
-  await renderPopular(ctx, 0, false);
-});
+// Doim tahrirlashga urinadi (edit=true) — agar tahrirlab bo'lmasa (masalan,
+// welcome xabaridan birinchi marta kirilganda), renderPopular o'zi reply'ga tushadi.
 searchHandler.callbackQuery(/^popular:page:(\d+)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
   await renderPopular(ctx, Number(ctx.match[1]), true);
@@ -72,8 +70,13 @@ async function renderPopular(ctx: MyContext, page: number, edit: boolean) {
   if (page < pages - 1) kb.text("▶️", `popular:page:${page + 1}`);
 
   const text = `${ce("trendUp")} <b>Ko'p ko'rilgan kinolar</b>`;
-  if (edit) await ctx.editMessageText(text, { reply_markup: kb }).catch(() => {});
-  else await ctx.reply(text, { reply_markup: kb });
+  if (edit) {
+    await ctx.editMessageText(text, { reply_markup: kb }).catch(async () => {
+      await ctx.reply(text, { reply_markup: kb });
+    });
+  } else {
+    await ctx.reply(text, { reply_markup: kb });
+  }
 }
 
 searchHandler.callbackQuery("popular:close", async (ctx) => {
