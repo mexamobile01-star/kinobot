@@ -55,11 +55,7 @@ export async function sendSerialSeasons(ctx: MyContext, serialId: number) {
   }
 }
 
-// Sezon tanlandi → qismlar ro'yxati
-serialViewHandler.callbackQuery(/^season:(\d+)$/, async (ctx) => {
-  const seasonId = Number(ctx.match[1]);
-  await ctx.answerCallbackQuery();
-
+async function renderSeasonEpisodes(ctx: MyContext, seasonId: number, edit: boolean) {
   const season = await prisma.season.findUnique({
     where: { id: seasonId },
     include: {
@@ -88,16 +84,31 @@ serialViewHandler.callbackQuery(/^season:(\d+)$/, async (ctx) => {
     if (++i % 3 === 0) kb.row();
   }
   kb.row();
-  if (prevSeason) kb.text("◀️ Orqaga", `season:${prevSeason.id}`);
+  if (prevSeason) kb.text("◀️", `season:${prevSeason.id}`);
   kb.text("❌", "serial:close");
-  if (nextSeason) kb.text("Oldinga ▶️", `season:${nextSeason.id}`);
+  if (nextSeason) kb.text("▶️", `season:${nextSeason.id}`);
   kb.row().text("🔙 Barcha sezonlar", `serialBack:${season.serialId}`);
 
-  await ctx.reply(
+  const text =
     `${ce("tv")} <b>${e.escapeHtml(season.serial.title)}</b> — ${season.number}-sezon\n` +
-      `Qismni tanlang:`,
-    { reply_markup: kb }
-  );
+    `Qismni tanlang:`;
+
+  if (edit) {
+    await ctx.editMessageText(text, { reply_markup: kb }).catch(async () => {
+      await ctx.reply(text, { reply_markup: kb });
+    });
+  } else {
+    await ctx.reply(text, { reply_markup: kb });
+  }
+}
+
+// Sezon tanlandi → qismlar ro'yxati (birinchi kirish — yangi xabar)
+serialViewHandler.callbackQuery(/^season:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  // Oldingi xabar ham qismlar ro'yxati bo'lsa (◀️/▶️ orqali) — tahrirlaymiz,
+  // aks holda (sezonlar ro'yxatidan, ehtimol rasmli) yangi xabar yuboramiz.
+  const fromEpisodeNav = !!ctx.callbackQuery.message?.text?.includes("Qismni tanlang:");
+  await renderSeasonEpisodes(ctx, Number(ctx.match[1]), fromEpisodeNav);
 });
 
 // Qism tanlandi → videoni yuborish

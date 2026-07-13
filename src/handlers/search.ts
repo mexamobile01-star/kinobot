@@ -67,9 +67,9 @@ async function renderPopular(ctx: MyContext, page: number, edit: boolean) {
     kb.text(`${m.title} (${m.views})`, `movie:${m.id}`).row();
   }
   const pages = Math.ceil(total / PAGE);
-  if (page > 0) kb.text("◀️ Orqaga", `popular:page:${page - 1}`);
+  if (page > 0) kb.text("◀️", `popular:page:${page - 1}`);
   kb.text("❌", "popular:close");
-  if (page < pages - 1) kb.text("Oldinga ▶️", `popular:page:${page + 1}`);
+  if (page < pages - 1) kb.text("▶️", `popular:page:${page + 1}`);
 
   const text = `${ce("trendUp")} <b>Ko'p ko'rilgan kinolar</b>`;
   if (edit) await ctx.editMessageText(text, { reply_markup: kb }).catch(() => {});
