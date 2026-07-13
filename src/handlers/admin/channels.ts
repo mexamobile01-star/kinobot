@@ -57,7 +57,7 @@ async function channelMenuData() {
     ],
     [
       ibtn("🎨 Knopka sozlamalari", "ch:btnsettings", "primary"),
-      ibtn("📊 So'rovlar",          "ch:jrstats",     "primary"),
+      ibtn("So'rovlar",             "ch:jrstats",     "primary", BE.stats),
     ],
     [ibtn("Menyuga qaytish", "ch:close", undefined, BE.backMenu)],
   );

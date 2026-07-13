@@ -18,6 +18,10 @@ import { premiumHandler } from "./handlers/premiumUser.js";
 import { startAutoBackup } from "./services/autoBackup.js";
 import { initAiUsageTracking } from "./services/aiUsage.js";
 import { indexVideoMovie } from "./services/ingest.js";
+import { continueSurveyChain } from "./handlers/admin/funnel.js";
+import { nearestRegion } from "./utils/regions.js";
+import { getBool, KEYS } from "./utils/settings.js";
+import { e } from "./utils/emoji.js";
 
 // ===== Middleware: foydalanuvchini bazaga yozish =====
 bot.use(trackUser);
@@ -237,11 +241,50 @@ bot.callbackQuery(/^svr:ans:(\d+):(\d+)$/, async (ctx) => {
   if (survey.isRegionSurvey) {
     await prisma.user.update({ where: { id: userId }, data: { region: option.text } }).catch(() => null);
   }
+  if (survey.isGenderSurvey) {
+    await prisma.user.update({ where: { id: userId }, data: { gender: option.text } }).catch(() => null);
+  }
 
   await ctx.answerCallbackQuery({ text: `✅ Javobingiz qabul qilindi: ${option.text}` });
   await ctx.editMessageText(
     `${survey.question}\n\n✅ <b>Javobingiz:</b> ${option.text}`
   ).catch(() => {});
+
+  await continueSurveyChain(ctx, userId, surveyId);
+});
+
+// ===== Viloyat so'rovnomasi uchun GPS orqali avtomatik manzil aniqlash =====
+bot.on("message:location", async (ctx, next) => {
+  if (!(await getBool(KEYS.geoDetectEnabled, false))) return next();
+
+  const { latitude, longitude } = ctx.message.location;
+  const region = nearestRegion(latitude, longitude);
+  const userId = BigInt(ctx.from.id);
+
+  await prisma.user.update({ where: { id: userId }, data: { region } }).catch(() => null);
+  await ctx.reply(
+    `📍 Manzilingiz aniqlandi: <b>${e.escapeHtml(region)}</b>`,
+    { reply_markup: { remove_keyboard: true } }
+  );
+
+  // Eng so'nggi faol viloyat so'rovnomasiga javobni yozib, zanjirni davom ettiramiz
+  const survey = await prisma.survey.findFirst({
+    where: { isRegionSurvey: true },
+    orderBy: { createdAt: "desc" },
+    include: { options: true },
+  });
+  if (!survey) return;
+
+  const option = survey.options.find((o) => o.text === region);
+  if (option) {
+    await prisma.surveyResponse.upsert({
+      where: { surveyId_userId: { surveyId: survey.id, userId } },
+      create: { surveyId: survey.id, optionId: option.id, userId },
+      update: { optionId: option.id },
+    }).catch(() => null);
+  }
+
+  await continueSurveyChain(ctx, userId, survey.id);
 });
 
 // Graceful shutdown

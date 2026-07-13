@@ -3,9 +3,60 @@ import { isOwner, adminCan } from "../../config.js";
 import { prisma } from "../../prisma.js";
 import { e } from "../../utils/emoji.js";
 import { ADMIN_MENU_BUTTONS, ibtn, BE, kb, adminMenuKeyboard } from "../../utils/keyboard.js";
+import { getBool, setBool, KEYS } from "../../utils/settings.js";
+import { UZ_REGIONS } from "../../utils/regions.js";
 import type { MyContext } from "../../types.js";
+import type { Survey, SurveyOption } from "@prisma/client";
 
 export const funnelHandler = new Composer<MyContext>();
+
+// ─── Foydalanuvchiga so'rovnoma yuborish (broadcast va zanjir uchun umumiy) ──
+
+/** Bitta foydalanuvchiga so'rovnoma savolini yuboradi; viloyat so'rovi bo'lsa va
+ * avto-manzil yoqilgan bo'lsa, GPS orqali aniqlash tugmasi bilan qo'shimcha xabar ham yuboradi. */
+export async function pushSurveyToUser(
+  ctx: MyContext,
+  userId: number | bigint,
+  survey: Pick<Survey, "id" | "question" | "isRegionSurvey"> & { options: Pick<SurveyOption, "id" | "text">[] }
+): Promise<void> {
+  const ikb = {
+    inline_keyboard: survey.options.map((o) => [{ text: o.text, callback_data: `svr:ans:${survey.id}:${o.id}` }]),
+  };
+  // Asosiy xabar — muvaffaqiyatsiz bo'lsa chaqiruvchiga otiladi (bloklangan foydalanuvchini aniqlash uchun)
+  await ctx.api.sendMessage(Number(userId), survey.question, { reply_markup: ikb, parse_mode: "HTML" });
+
+  if (survey.isRegionSurvey && (await getBool(KEYS.geoDetectEnabled, false))) {
+    await ctx.api.sendMessage(
+      Number(userId),
+      "📍 Yoki manzilingizni <b>avtomatik</b> aniqlatishingiz mumkin:",
+      {
+        parse_mode: "HTML",
+        reply_markup: {
+          keyboard: [[{ text: "📍 Manzilni avtomatik aniqlash", request_location: true }]],
+          resize_keyboard: true,
+          one_time_keyboard: true,
+        },
+      }
+    ).catch(() => {});
+  }
+}
+
+/** Javob berilgach zanjirdagi keyingi so'rovnomani (bo'lsa) avtomatik yuboradi */
+export async function continueSurveyChain(ctx: MyContext, userId: number | bigint, prevSurveyId: number): Promise<void> {
+  const prev = await prisma.survey.findUnique({ where: { id: prevSurveyId } });
+  if (!prev?.nextSurveyId) return;
+  const next = await prisma.survey.findUnique({
+    where: { id: prev.nextSurveyId },
+    include: { options: { orderBy: { sortOrder: "asc" } } },
+  });
+  if (!next) return;
+  try {
+    await pushSurveyToUser(ctx, userId, next);
+    await prisma.survey.update({ where: { id: next.id }, data: { sentCount: { increment: 1 } } }).catch(() => null);
+  } catch {
+    // Foydalanuvchi botni bloklagan bo'lishi mumkin — e'tibor bermaymiz
+  }
+}
 
 // ─── Session yordamchilari ───────────────────────────────────────────────────
 
@@ -33,11 +84,17 @@ function parseDate(s: string): Date | null {
 
 // ─── Asosiy menyu ────────────────────────────────────────────────────────────
 
-function funnelMenu() {
+async function funnelMenu() {
+  const geoOn = await getBool(KEYS.geoDetectEnabled, false);
   return kb(
     [ibtn("So'rovnoma yaratish",  "fn:create",  "success", BE.chAdd)],
+    [ibtn("✨ Standart (Viloyat+Jins)", "fn:defaultcreate", "primary")],
     [ibtn("Natijalar",            "fn:results", "primary", BE.stats)],
     [ibtn("So'rovnoma yuborish",  "fn:send",    "primary", BE.broadcast)],
+    [ibtn(
+      geoOn ? "📍 Avto-manzil: Yoqilgan" : "📍 Avto-manzil: O'chirilgan",
+      "fn:geotoggle", geoOn ? "success" : "danger"
+    )],
     [ibtn("O'chirish",            "fn:delete",  "danger",  BE.chDelete)],
     [ibtn("Orqaga",               "bc:menu",    undefined, BE.backMenu)],
   );
@@ -46,7 +103,59 @@ function funnelMenu() {
 funnelHandler.hears(ADMIN_MENU_BUTTONS.funnel, async (ctx) => {
   if (!adminCan(ctx.from?.id ?? 0, "funnel")) return;
   clearF(ctx);
-  await ctx.reply("<b>Funnel — So'rovnomalar</b>", { reply_markup: funnelMenu() });
+  await ctx.reply("<b>Funnel — So'rovnomalar</b>", { reply_markup: await funnelMenu() });
+});
+
+funnelHandler.callbackQuery("fn:geotoggle", async (ctx) => {
+  const cur = await getBool(KEYS.geoDetectEnabled, false);
+  await setBool(KEYS.geoDetectEnabled, !cur);
+  await ctx.answerCallbackQuery({ text: !cur ? "✅ Avto-manzil aniqlash yoqildi" : "❌ O'chirildi", show_alert: true });
+  await ctx.editMessageReplyMarkup({ reply_markup: await funnelMenu() }).catch(() => {});
+});
+
+// Standart so'rovnoma zanjiri: Viloyat (barcha hududlar) -> javobdan keyin Jins
+funnelHandler.callbackQuery("fn:defaultcreate", async (ctx) => {
+  const existing = await prisma.survey.findFirst({ where: { isRegionSurvey: true } });
+  if (existing) {
+    await ctx.answerCallbackQuery({ text: "Standart viloyat so'rovnomasi allaqachon mavjud.", show_alert: true });
+    return;
+  }
+  await ctx.answerCallbackQuery();
+
+  const genderSurvey = await prisma.survey.create({
+    data: {
+      title: "Jins",
+      question: "👤 Jinsingizni tanlang:",
+      isGenderSurvey: true,
+      options: { create: [
+        { text: "👨 Erkak", sortOrder: 0 },
+        { text: "👩 Ayol",  sortOrder: 1 },
+      ] },
+    },
+  });
+
+  const regionSurvey = await prisma.survey.create({
+    data: {
+      title: "Viloyat",
+      question: "🗺 Qaysi hududdansiz?",
+      isRegionSurvey: true,
+      nextSurveyId: genderSurvey.id,
+      options: { create: UZ_REGIONS.map((r, i) => ({ text: r.name, sortOrder: i })) },
+    },
+  });
+
+  await ctx.editMessageText(
+    `✅ <b>Standart so'rovnoma zanjiri yaratildi!</b>\n\n` +
+    `1️⃣ Viloyat (${UZ_REGIONS.length} ta hudud)\n` +
+    `2️⃣ Jins — javob berilgach avtomatik yuboriladi\n\n` +
+    `<i>Yuborilganda foydalanuvchi ro'yxatdan viloyatini tanlaydi yoki (yoqilgan bo'lsa) ` +
+    `GPS orqali avtomatik aniqlatadi. Natijalarni "Auditoriyaga qarab yuborish" uchun ` +
+    `Xabar yuborish → Viloyat bo'yicha bo'limida ishlating.</i>`,
+    { reply_markup: kb(
+      [ibtn("▶️ Hozir yuborish", `fn:sendsurvey:${regionSurvey.id}`, "success", BE.broadcast)],
+      [ibtn("Menyuga", "fn:menu", "primary", BE.backMenu)],
+    )}
+  ).catch(() => {});
 });
 
 funnelHandler.callbackQuery("fn:close", async (ctx) => {
@@ -59,7 +168,7 @@ funnelHandler.callbackQuery("fn:close", async (ctx) => {
 funnelHandler.callbackQuery("fn:menu", async (ctx) => {
   await ctx.answerCallbackQuery();
   clearF(ctx);
-  await ctx.editMessageText("<b>Funnel — So'rovnomalar</b>", { reply_markup: funnelMenu() }).catch(() => {});
+  await ctx.editMessageText("<b>Funnel — So'rovnomalar</b>", { reply_markup: await funnelMenu() }).catch(() => {});
 });
 
 // ─── Yaratish ────────────────────────────────────────────────────────────────
@@ -230,21 +339,12 @@ async function sendSurveyToUsers(ctx: MyContext, surveyId: number, targetType: s
   const users = await prisma.user.findMany({ ...whereClause, select: { id: true } });
   const total = users.length;
 
-  const ikb = {
-    inline_keyboard: survey.options.map((o) => [
-      { text: o.text, callback_data: `svr:ans:${surveyId}:${o.id}` },
-    ]),
-  };
-
   let sent = 0;
   const statusMsg = await ctx.reply(`Yuborilmoqda: 0 / ${total}...`);
 
   for (let i = 0; i < users.length; i++) {
     try {
-      await ctx.api.sendMessage(Number(users[i].id), survey.question, {
-        reply_markup: ikb,
-        parse_mode: "HTML",
-      });
+      await pushSurveyToUser(ctx, users[i].id, survey);
       sent++;
     } catch {
       await prisma.user.update({ where: { id: users[i].id }, data: { isBlocked: true } }).catch(() => null);
@@ -373,12 +473,15 @@ async function saveSurvey(ctx: MyContext, f: FData) {
   const isRegion = f.options.some((o) =>
     /viloyat|shahar|toshkent|samarqand|farg|buxoro|xorazm|qashqadaryo|surxondaryo|jizzax|sirdaryo|navoiy|andijon|namangan/i.test(o)
   );
+  const isGender = !isRegion && f.options.length === 2 && f.options.some((o) => /erkak|o'g'il|male/i.test(o))
+    && f.options.some((o) => /ayol|qiz|female/i.test(o));
 
   const survey = await prisma.survey.create({
     data: {
       title: f.title,
       question: f.question,
       isRegionSurvey: isRegion,
+      isGenderSurvey: isGender,
       options: {
         create: f.options.map((text, i) => ({ text, sortOrder: i })),
       },
@@ -391,7 +494,8 @@ async function saveSurvey(ctx: MyContext, f: FData) {
     `Sarlavha: <b>${e.escapeHtml(f.title)}</b>\n` +
     `Savol: ${e.escapeHtml(f.question)}\n` +
     `Variantlar: <b>${f.options.length}</b> ta\n` +
-    (isRegion ? `Viloyat so'rovnomasi sifatida belgilandi.` : ""),
+    (isRegion ? `Viloyat so'rovnomasi sifatida belgilandi.` : "") +
+    (isGender ? `Jins so'rovnomasi sifatida belgilandi.` : ""),
     { reply_markup: kb(
       [ibtn("Hozir yuborish", `fn:sendsurvey:${survey.id}`, "success", BE.broadcast)],
       [ibtn("Menyuga",        "fn:menu",                    "primary", BE.backMenu)],

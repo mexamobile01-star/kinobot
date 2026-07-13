@@ -60,6 +60,7 @@ export const KEYS = {
   postDeliveryBtnText: "post_delivery_btn_text", // qo'shimcha post knopkasi matni
   postDeliveryBtnUrl:  "post_delivery_btn_url",  // qo'shimcha post knopkasi havolasi
   postDeliveryBtnStyle:"post_delivery_btn_style",// qo'shimcha post knopkasi rangi
+  geoDetectEnabled:  "geo_detect_enabled", // viloyat so'rovnomasida GPS orqali avto-aniqlash tugmasi
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────────────

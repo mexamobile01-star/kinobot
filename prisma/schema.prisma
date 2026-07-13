@@ -17,6 +17,7 @@ model User {
   firstName         String?
   username          String?
   region            String?
+  gender            String?  // "Erkak"/"Ayol" — foydalanuvchi so'rovnomada o'zi tanlagan (taxmin emas)
   referredById      BigInt?  // kim taklif qilgan
   referralConfirmed Boolean  @default(false) // obunadan keyin tasdiqlanadi
   isBlocked         Boolean  @default(false)
@@ -74,6 +75,8 @@ model Survey {
   title          String
   question       String
   isRegionSurvey Boolean  @default(false)
+  isGenderSurvey Boolean  @default(false)
+  nextSurveyId   Int?     // javob berilgach avtomatik yuboriladigan keyingi so'rovnoma (zanjir)
   sentCount      Int      @default(0)
   createdAt      DateTime @default(now())
 

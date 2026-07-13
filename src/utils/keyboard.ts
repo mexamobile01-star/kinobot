@@ -15,7 +15,7 @@ export const BE = {
   serial:   "5258391252914676042",
   admin:    "5258011929993026890",
   broadcast:"5258020476977946656",
-  backup:   "5258200019495821936",
+  backup:   "5258514780469075716",
   subOn:    "5861665979968262792",
   subOff:   "5859494848230334025",
   chList:   "5257965174979042426",
@@ -25,7 +25,7 @@ export const BE = {
   editName: "5258331647358540449",
   editUrl:  "5260730055880876557",
   list:     "5210860842714688276",
-  film:     "5258331647358540449",
+  film:     "5258077307985207053",
   tv:       "4918438965029110683",
   folder:   "5260416304224936047",
   check:    "5260342697075416641",
@@ -38,6 +38,7 @@ export const BE = {
   trend:    "5258513401784573443",
   botSettings: "5258096772776991776",
   views:    "5253959125838090076",
+  referral: "5258362837411045098",
 } as const;
 
 export const ADMIN_MENU_BUTTONS = {
@@ -89,7 +90,7 @@ const SECTION_META: { key: string; text: string; emoji: string }[] = [
   { key: "movies",    text: ADMIN_MENU_BUTTONS.movies,    emoji: BE.movie },
   { key: "serials",   text: ADMIN_MENU_BUTTONS.serials,   emoji: BE.serial },
   { key: "broadcast", text: ADMIN_MENU_BUTTONS.broadcast, emoji: BE.broadcast },
-  { key: "referrals", text: ADMIN_MENU_BUTTONS.referrals, emoji: BE.users },
+  { key: "referrals", text: ADMIN_MENU_BUTTONS.referrals, emoji: BE.referral },
 ];
 
 /** "Bot sozlamalari" ichidagi bo'limlar — reply tugma ko'rinishini aniqlash uchun ham */
