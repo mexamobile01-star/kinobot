@@ -20,6 +20,7 @@ function movieMenu() {
     [ibtn("Kino qo'shish", "mv:add", "success", BE.chAdd)],
     [ibtn("Ro'yxat", "mv:list:0", "primary", BE.chList), ibtn("O'chirish", "mv:del:0", "danger", BE.chDelete)],
     [ibtn("Knopka boshqaruvi", "mv:btnlist:0")],
+    [ibtn("📲 Keyingi xabar (post)", "mv:pdmenu", "primary")],
     [ibtn("📥 Manba kanallar (avto-olish)", "src:menu", "primary")],
     [ibtn("Menyuga qaytish", "mv:close", undefined, BE.backMenu)],
   );
@@ -327,7 +328,167 @@ moviesHandler.callbackQuery("mv:gbtnclear", async (ctx) => {
   await renderGlobalMovieButtonEditor(ctx);
 });
 
+// ─── Kino yuborilgandan keyingi qo'shimcha post (reklama va h.k.) ────────────
+moviesHandler.callbackQuery("mv:pdmenu", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await renderPostDeliveryEditor(ctx);
+});
+
+async function renderPostDeliveryEditor(ctx: MyContext, edit = true) {
+  const [enabled, text, btnText, btnUrl, btnStyle] = await Promise.all([
+    getBool(KEYS.postDeliveryEnabled, false),
+    getSetting(KEYS.postDeliveryText, ""),
+    getSetting(KEYS.postDeliveryBtnText, ""),
+    getSetting(KEYS.postDeliveryBtnUrl, ""),
+    getSetting(KEYS.postDeliveryBtnStyle, "primary"),
+  ]);
+
+  const status =
+    (text ? `Matn:\n${e.escapeHtml(text)}\n\n` : "Matn hali sozlanmagan.\n\n") +
+    (btnUrl ? `Knopka: <b>${e.escapeHtml(btnText || "—")}</b>\nHavola: ${e.escapeHtml(btnUrl)}\nRang: <b>${btnStyle}</b>` : "Knopka sozlanmagan (ixtiyoriy).");
+
+  const msg =
+    `<tg-emoji emoji-id="${BE.movie}">📲</tg-emoji> <b>Kino keyingi xabari</b>\n\n` +
+    `Holat: <b>${enabled ? "Yoqilgan" : "O'chirilgan"}</b>\n` +
+    `<i>Kino yuborilgandan so'ng darhol shu xabar (masalan APK ilova reklamasi) qo'shimcha yuboriladi.</i>\n\n` +
+    status;
+
+  const reply_markup = kb(
+    [
+      ibtn(
+        enabled ? "🟢 Yoqilgan — O'chirish" : "🔴 O'chirilgan — Yoqish",
+        "mv:pdtoggle",
+        enabled ? "success" : "danger"
+      ),
+    ],
+    [ibtn("✏️ Matnni o'zgartirish", "mv:pdtext", "primary")],
+    [
+      ibtn("Knopka nomi", "mv:pdbtntext", "primary", BE.editName),
+      ibtn("Knopka havolasi", "mv:pdbtnurl", "primary", BE.editUrl),
+    ],
+    [
+      ibtn("🎨 Rangni tanlash", "mv:pdbtncolors", "primary"),
+      ibtn("Hammasini tozalash", "mv:pdclear", "danger", BE.chDelete),
+    ],
+    [ibtn("Orqaga", "mv:back", undefined, BE.backMenu)],
+  );
+
+  if (edit) {
+    await ctx.editMessageText(msg, { reply_markup }).catch(() => {});
+  } else {
+    await ctx.reply(msg, { reply_markup });
+  }
+}
+
+moviesHandler.callbackQuery("mv:pdtoggle", async (ctx) => {
+  const cur = await getBool(KEYS.postDeliveryEnabled, false);
+  const next = !cur;
+  if (next) {
+    const text = await getSetting(KEYS.postDeliveryText, "");
+    if (!text.trim()) {
+      await ctx.answerCallbackQuery({ text: "❌ Avval matnni sozlang, keyin yoqing.", show_alert: true });
+      return;
+    }
+  }
+  await setBool(KEYS.postDeliveryEnabled, next);
+  await ctx.answerCallbackQuery({ text: next ? "✅ Yoqildi" : "❌ O'chirildi", show_alert: true });
+  await renderPostDeliveryEditor(ctx);
+});
+
+moviesHandler.callbackQuery("mv:pdtext", async (ctx) => {
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), pdField: "text" };
+  await ctx.answerCallbackQuery();
+  await ctx.reply(
+    "Kino yuborilgandan keyin chiqadigan <b>matnni</b> yuboring (HTML teglar mumkin).\n\n" +
+    "Masalan: <code>📲 Ilovalar do'koni kerakmi? Apk Topla orqali yuklab oling!</code>"
+  );
+});
+
+moviesHandler.callbackQuery("mv:pdbtntext", async (ctx) => {
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), pdField: "btntext" };
+  await ctx.answerCallbackQuery();
+  await ctx.reply("Knopka nomini yuboring. Masalan: <code>📥 Apk Topla'ni yuklash</code>");
+});
+
+moviesHandler.callbackQuery("mv:pdbtnurl", async (ctx) => {
+  ctx.session.scratch = { ...(ctx.session.scratch ?? {}), pdField: "btnurl" };
+  await ctx.answerCallbackQuery();
+  await ctx.reply("Knopka havolasini yuboring. Masalan: <code>https://t.me/apktopla</code>");
+});
+
+moviesHandler.callbackQuery("mv:pdbtncolors", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await ctx.editMessageText(
+    "🎨 <b>Knopka rangini tanlang:</b>",
+    {
+      reply_markup: kb(
+        [
+          ibtn("Ko'k",   "mv:pdbtnsty:primary", "primary"),
+          ibtn("Yashil", "mv:pdbtnsty:success", "success"),
+          ibtn("Qizil",  "mv:pdbtnsty:danger",  "danger"),
+          ibtn("Random", "mv:pdbtnsty:random",  "success"),
+        ],
+        [ibtn("Orqaga", "mv:pdmenu", undefined, BE.backMenu)],
+      ),
+    }
+  ).catch(() => {});
+});
+
+moviesHandler.callbackQuery(/^mv:pdbtnsty:(primary|success|danger|random)$/, async (ctx) => {
+  const style = resolveButtonStyle(ctx.match[1]);
+  await setSetting(KEYS.postDeliveryBtnStyle, style);
+  await ctx.answerCallbackQuery({ text: `Rang: ${style}` });
+  await renderPostDeliveryEditor(ctx);
+});
+
+moviesHandler.callbackQuery("mv:pdclear", async (ctx) => {
+  await Promise.all([
+    setBool(KEYS.postDeliveryEnabled, false),
+    setSetting(KEYS.postDeliveryText, ""),
+    setSetting(KEYS.postDeliveryBtnText, ""),
+    setSetting(KEYS.postDeliveryBtnUrl, ""),
+    setSetting(KEYS.postDeliveryBtnStyle, "primary"),
+  ]);
+  await ctx.answerCallbackQuery({ text: "Tozalandi va o'chirildi." });
+  await renderPostDeliveryEditor(ctx);
+});
+
 moviesHandler.on("message:text", async (ctx, next) => {
+  const pdField = ctx.session.scratch?.pdField as string | undefined;
+  if (pdField) {
+    const text = ctx.message.text.trim();
+    if (isCancel(text)) {
+      if (ctx.session.scratch) delete ctx.session.scratch.pdField;
+      await ctx.reply("❌ Bekor qilindi.");
+      return;
+    }
+
+    if (pdField === "text") {
+      await setSetting(KEYS.postDeliveryText, text.slice(0, 1024));
+      if (ctx.session.scratch) delete ctx.session.scratch.pdField;
+      await ctx.reply(`${ce("check")} Matn saqlandi.`);
+      await renderPostDeliveryEditor(ctx, false);
+      return;
+    }
+    if (pdField === "btntext") {
+      await setSetting(KEYS.postDeliveryBtnText, text.slice(0, 64));
+      if (ctx.session.scratch) delete ctx.session.scratch.pdField;
+      await ctx.reply(`${ce("check")} Knopka nomi saqlandi.`);
+      await renderPostDeliveryEditor(ctx, false);
+      return;
+    }
+    // btnurl
+    if (!isValidUrl(text)) {
+      await ctx.reply("❌ Havola <code>http://</code> yoki <code>https://</code> bilan boshlanishi kerak.");
+      return;
+    }
+    await setSetting(KEYS.postDeliveryBtnUrl, text);
+    if (ctx.session.scratch) delete ctx.session.scratch.pdField;
+    await ctx.reply(`${ce("check")} Knopka havolasi saqlandi.`);
+    await renderPostDeliveryEditor(ctx, false);
+    return;
+  }
+
   const field = ctx.session.scratch?.movieBtnField as string | undefined;
   if (!field) return next();
 

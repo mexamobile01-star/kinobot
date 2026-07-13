@@ -55,6 +55,11 @@ export const KEYS = {
   freeAiLimit:       "free_ai_limit",       // bepul kunlik AI so'rovlari (0 = cheksiz)
   paymentInfo:       "payment_info",        // Karta orqali to'lov ko'rsatmasi (karta raqami va h.k.)
   paymentInfoTon:    "payment_info_ton",    // TON orqali to'lov ko'rsatmasi (wallet manzili va h.k.)
+  postDeliveryEnabled: "post_delivery_enabled",  // kino yuborilgach qo'shimcha post yoq/o'chir
+  postDeliveryText:    "post_delivery_text",     // qo'shimcha post matni (masalan APK reklama)
+  postDeliveryBtnText: "post_delivery_btn_text", // qo'shimcha post knopkasi matni
+  postDeliveryBtnUrl:  "post_delivery_btn_url",  // qo'shimcha post knopkasi havolasi
+  postDeliveryBtnStyle:"post_delivery_btn_style",// qo'shimcha post knopkasi rangi
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
