@@ -310,6 +310,16 @@ broadcastHandler.callbackQuery(/^bc:btnstyle:(primary|success|danger|random):(.+
   const btn: InlineBtn = { text: bcast.pendingBtnText, url, style };
   delete bcast.pendingBtnText;
 
+  // Birinchi knopka bo'lsa — "qatorga qo'shish" savoli ma'nosiz (qo'shadigan avvalgi
+  // qator yo'q), shu zahoti yangi qator sifatida qo'shib preview'ga o'tamiz.
+  if (bcast.buttons.length === 0) {
+    bcast.buttons.push([btn]);
+    bcast.state = "preview";
+    setBcast(ctx, bcast);
+    await showPreview(ctx, bcast);
+    return;
+  }
+
   await ctx.editMessageText(
     "Yangi qatorda yoki avvalgisi bilan?",
     {
