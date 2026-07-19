@@ -1,16 +1,13 @@
-import { Composer, InputFile } from "grammy";
+import { Composer } from "grammy";
 import { prisma } from "../../prisma.js";
 import { config, adminCan } from "../../config.js";
 import { ADMIN_MENU_BUTTONS, ibtn, BE, kb } from "../../utils/keyboard.js";
 import { clearSettingsCache, getBool, setBool, KEYS } from "../../utils/settings.js";
+import { buildBackupFile, fetchAndParseBackup } from "../../services/autoBackup.js";
 import type { MyContext } from "../../types.js";
 import type { ChannelType } from "@prisma/client";
 
 export const backupHandler = new Composer<MyContext>();
-
-// BigInt → string uchun replacer
-const bigintReplacer = (_key: string, value: unknown) =>
-  typeof value === "bigint" ? value.toString() : value;
 
 async function backupMenuWithBack() {
   const auto = await getBool(KEYS.autoBackupEnabled, false);
@@ -62,46 +59,17 @@ backupHandler.callbackQuery("backup:close", async (ctx) => {
 backupHandler.callbackQuery("backup:get", async (ctx) => {
   await ctx.answerCallbackQuery({ text: "Backup tayyorlanmoqda..." });
 
-  const [movies, serials, seasons, episodes, channels, users, settings] =
-    await Promise.all([
-      prisma.movie.findMany(),
-      prisma.serial.findMany(),
-      prisma.season.findMany(),
-      prisma.episode.findMany(),
-      prisma.channel.findMany(),
-      prisma.user.findMany(),
-      prisma.setting.findMany(),
-    ]);
-
-  const data = {
-    exportedAt: new Date().toISOString(),
-    version: 2,
-    counts: {
-      movies: movies.length,
-      serials: serials.length,
-      seasons: seasons.length,
-      episodes: episodes.length,
-      channels: channels.length,
-      users: users.length,
-    },
-    data: { movies, serials, seasons, episodes, channels, users, settings },
-  };
-
-  const json = JSON.stringify(data, bigintReplacer, 2);
-  const fileName = `kinobot-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  const { file, counts } = await buildBackupFile();
 
   // Hujjat ostida knopka chiqmasin
-  await ctx.replyWithDocument(
-    new InputFile(Buffer.from(json, "utf-8"), fileName),
-    {
-      caption:
-        `<b>Backup tayyor</b>\n\n` +
-        `Kinolar: <b>${movies.length}</b>\n` +
-        `Seriallar: <b>${serials.length}</b> (${episodes.length} qism)\n` +
-        `Kanallar: <b>${channels.length}</b>\n` +
-        `Foydalanuvchilar: <b>${users.length}</b>`,
-    }
-  );
+  await ctx.replyWithDocument(file, {
+    caption:
+      `<b>Backup tayyor</b> (gzip siqilgan)\n\n` +
+      `Kinolar: <b>${counts.movies}</b>\n` +
+      `Seriallar: <b>${counts.serials}</b> (${counts.episodes} qism)\n` +
+      `Kanallar: <b>${counts.channels}</b>\n` +
+      `Foydalanuvchilar: <b>${counts.users}</b>`,
+  });
 });
 
 // ============ TIKLASH — FAYL SO'RASH ============
@@ -110,7 +78,7 @@ backupHandler.callbackQuery("backup:restore", async (ctx) => {
   ctx.session.scratch = { awaitingRestore: true };
   await ctx.reply(
     `📤 <b>Backupdan tiklash</b>\n\n` +
-    `Backup <b>.json</b> faylini yuboring.\n\n` +
+    `Backup <b>.json</b> yoki <b>.json.gz</b> faylini yuboring.\n\n` +
     `⚠️ Mavjud ma'lumotlar ustiga yoziladi.`,
     { reply_markup: kb([ibtn("❌ Bekor qilish", "backup:cancel", "danger")]) }
   );
@@ -121,8 +89,8 @@ backupHandler.on("message:document", async (ctx, next) => {
   if (!ctx.session.scratch?.awaitingRestore) return next();
 
   const doc = ctx.message.document;
-  if (!doc.file_name?.endsWith(".json")) {
-    await ctx.reply("❌ Faqat <b>.json</b> formatdagi fayl yuboring.");
+  if (!doc.file_name?.endsWith(".json") && !doc.file_name?.endsWith(".json.gz")) {
+    await ctx.reply("❌ Faqat <b>.json</b> yoki <b>.json.gz</b> formatdagi fayl yuboring.");
     return;
   }
 
@@ -132,9 +100,7 @@ backupHandler.on("message:document", async (ctx, next) => {
   try {
     const file = await ctx.api.getFile(doc.file_id);
     const url  = `https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`;
-    const res  = await fetch(url);
-    const text = await res.text();
-    backupData = JSON.parse(text);
+    backupData = await fetchAndParseBackup(url);
   } catch {
     await ctx.reply("❌ Faylni o'qib bo'lmadi. Qayta urinib ko'ring.");
     return;
@@ -182,12 +148,10 @@ backupHandler.callbackQuery("backup:confirm", async (ctx) => {
   try {
     const file = await ctx.api.getFile(fileId);
     const url  = `https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`;
-    const res  = await fetch(url);
-    const text = await res.text();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const backup = JSON.parse(text) as any;
+    const backup = await fetchAndParseBackup(url);
 
-    const result = await performRestore(backup.data);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await performRestore((backup as any).data);
 
     clearSettingsCache();
 
